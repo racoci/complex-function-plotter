@@ -118,6 +118,11 @@ function compile(ast: ASTNode): ASTNode {
         return ast;
     }
 
+    if (operator === 'call') {
+        const [funcName, funcArgs] = args;
+        return ['call', funcName, (funcArgs as ASTNode[]).map(compile)];
+    }
+
     // Higher-order functions
     if (operator === 'sum' || operator === 'prod') {
         const res = sumProd(operator, args);

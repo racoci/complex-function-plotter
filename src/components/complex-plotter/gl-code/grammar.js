@@ -1,6 +1,5 @@
 // Generated automatically by nearley, version 2.20.1
 // http://github.com/Hardmath123/nearley
-(function () {
 function id(x) { return x[0]; }
 var grammar = {
     Lexer: undefined,
@@ -352,6 +351,7 @@ var grammar = {
         }
         },
     {"name": "subscript$subexpression$1", "symbols": ["digits"]},
+    {"name": "subscript$subexpression$1", "symbols": [/[a-zA-Z]/]},
     {"name": "subscript$subexpression$1", "symbols": [{"literal":"{"}, "subscriptContent", {"literal":"}"}]},
     {"name": "subscript", "symbols": [{"literal":"_"}, "subscript$subexpression$1"], "postprocess": 
         (data) => {
@@ -374,8 +374,4 @@ var grammar = {
 ]
   , ParserStart: "sum"
 }
-if (typeof globalThis !== 'undefined') {
-   globalThis.grammar = grammar;
-}
-})();
-export default globalThis.grammar;
+export default grammar;

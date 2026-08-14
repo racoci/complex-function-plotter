@@ -90,6 +90,17 @@ function runTests() {
         console.log(`  ✓ Unrolled f_3(z) AST: ${JSON.stringify(unrolledAST)}`);
 
         // ----------------------------------------------------
+        // TEST 4B: Recursive String Body Parsing
+        // ----------------------------------------------------
+        console.log("\n[Test 4B] Testing recursive string body parsing (f_{k-1}(z - c_k))...");
+        const recursiveStrBody = "f_{k-1}(z - c_k)";
+        const parsedRecursiveBody = parseExpression(recursiveStrBody);
+        if (!parsedRecursiveBody) {
+            throw new Error(`Failed to parse recursive body string: "${recursiveStrBody}"`);
+        }
+        console.log(`  ✓ Successfully parsed recursive body: "${recursiveStrBody}" -> AST: ${JSON.stringify(parsedRecursiveBody)}`);
+
+        // ----------------------------------------------------
         // TEST 5: Safety Guardrails (Constraints Validation)
         // ----------------------------------------------------
         console.log("\n[Test 5] Testing safety guardrails (constraints validation)...");

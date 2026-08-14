@@ -224,7 +224,7 @@ variable -> [a-z]:+ subscript:? {%
     }
 %}
 
-subscript -> "_" (digits | "{" subscriptContent "}") {%
+subscript -> "_" (digits | [a-zA-Z] | "{" subscriptContent "}") {%
     (data) => {
         const val = data[1];
         if (Array.isArray(val) && val[0] === "{") {
