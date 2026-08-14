@@ -11,7 +11,7 @@ The **Complex Function Plotter** is an interactive, web-based, real-time visuali
 The codebase was migrated and completely overhauled from a legacy 2018 Create React App (React 16 ejetado, Webpack, JS) into a **modern, high-performance standalone React 19 + TypeScript + Vite + Tailwind CSS v4 widget**.
 
 ### Standalone Portfolio Integration
-This repository is compiled into static production assets served via **GitHub Pages** (deployed to the `gh-pages` branch). It is designed to run in complete isolation and is optimized to be embedded in external applications, blogs, or portfolios (such as the main portfolio site at `https://racoci.github.io/`) using a sandboxed `<iframe>`:
+This repository is compiled into static production assets served via **GitHub Pages** (deployed directly using GitHub Actions). It is designed to run in complete isolation and is optimized to be embedded in external applications, blogs, or portfolios (such as the main portfolio site at `https://racoci.github.io/`) using a sandboxed `<iframe>`:
 
 ```html
 <iframe src="https://racoci.github.io/complex-function-plotter/?lang=pt" />
@@ -157,7 +157,21 @@ On every push to the `master` branch:
 1.  Downloads and sets up a standard Ubuntu workspace.
 2.  Installs verified npm dependencies cleanly (`npm ci`).
 3.  Runs the production build (`npm run build`), which runs type checking (`tsc`) and outputs compiled standalone assets to `/dist`.
-4.  Deploys the static assets from `/dist` directly to the `gh-pages` branch, which serves the standalone iframe widget live to the internet.
+4.  Deploys the static assets from `/dist` directly using `actions/deploy-pages`, serving the standalone iframe widget live to the internet.
+
+---
+
+## 8. Production Deployment & Troubleshooting (MIME-Type & CDN Caching Guardrails)
+
+### MIME-Type Error: "Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of 'application/octet-stream'"
+*   **Root Cause:** This error occurs when the browser requests `./src/main.tsx` instead of the Vite compiled JS bundle (`./assets/index-[hash].js`). Standard web servers (like GitHub Pages) do not recognize the `.tsx` extension and default to serving it as `application/octet-stream`. Browsers block this file per HTML5 strict MIME-type module spec.
+*   **Resolution:** 
+    1. Always ensure that `index.html` references the script using a relative path: `<script type="module" src="./src/main.tsx"></script>` (with the leading dot), allowing Vite to safely intercept, bundle, and rewrite the reference to `./assets/index-[hash].js`.
+    2. Ensure the GitHub Pages settings have their deployment Source set to **"GitHub Actions"** instead of **"Deploy from a branch"** (which serves raw master files).
+
+### GitHub Actions Direct Deploy vs. Branch-Based Overwrites
+*   The pipeline uses **Direct GitHub Actions Pages Deployment** (the modern standard, which builds and deploys zip artifacts securely without requiring any git-branch pollution).
+*   **Important Setting:** In the GitHub Repository **Settings -> Pages -> Build and deployment -> Source**, you MUST select **"GitHub Actions"**. If this is set to "Deploy from a branch", GitHub Pages will ignore our direct deployments and automatically trigger a hidden `"pages build and deployment"` job that serves the raw `master` branch files, leading to immediate MIME-type crashes.
 
 ---
 *Created with love and mathematics. Ready for future iterations. No further context required.*
