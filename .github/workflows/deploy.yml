@@ -30,10 +30,11 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      - name: Setup Pages ⚙️
+        uses: actions/configure-pages@v4
+
       - name: Install dependencies 📦
-        run: |
-          rm -rf package-lock.json
-          npm install
+        run: npm ci
 
       - name: Build 🏗️
         run: npm run build
