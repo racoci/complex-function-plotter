@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { initializeScene, drawScene } from './gl-code/scene';
 import { parseExpression } from './gl-code/complex-functions';
+import { compileGLSL } from './gl-code/translators/to-glsl';
 import { getFreeVariables } from './gl-code/utils/variables';
 import toLaTeX from './gl-code/translators/to-latex';
 import toJS from './gl-code/translators/to-js';
@@ -150,6 +151,10 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
   );
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
 
+  // State for the custom GLSL code editor
+  const [glslCode, setGlslCode] = useState<string>("");
+  const [isEditingGLSL, setIsEditingGLSL] = useState<boolean>(false);
+
   // Dragging custom variables
   const [activeVar, setActiveVar] = useState<string | null>(null);
 
@@ -200,6 +205,15 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
         setError(null);
         setLastValidAst(ast);
         setLatexStr(toLaTeX(ast));
+
+        // Generate and sync GLSL code if not in custom editing mode
+        if (!isEditingGLSL) {
+          const compiled = compileGLSL(ast, false); // Cartesian mode
+          if (compiled) {
+            const mappingFn = `vec2 mapping(vec2 z) {\n  return ${compiled.expression};\n}`;
+            setGlslCode(mappingFn);
+          }
+        }
         
         // Extract free variables
         const freeVars = Array.from(getFreeVariables(ast));
@@ -223,7 +237,7 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
       console.error("Safety Gate Compilation Error: ", err);
       setError(err?.message || "Compilation Error");
     }
-  }, [selectedFunction, functionDefs, indexValues, kConfirmed]);
+  }, [selectedFunction, functionDefs, indexValues, kConfirmed, isEditingGLSL]);
 
   // Monitor resize of container
   useEffect(() => {
@@ -242,7 +256,7 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
   useEffect(() => {
     const canvas = canvasRef.current;
     const axesCanvas = axesCanvasRef.current;
-    const astToRender = lastValidAst;
+    const astToRender = isEditingGLSL ? glslCode : lastValidAst;
     if (!canvas || !axesCanvas || dimensions.width === 0 || dimensions.height === 0 || !astToRender || !kConfirmed) return;
     
     const gl = canvas.getContext('webgl');
@@ -257,8 +271,13 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
     gl.viewport(0, 0, canvas.width, canvas.height);
 
     const varNames = Object.keys(variables);
-    const varLocations: any = initializeScene(gl, astToRender, false, varNames);
-    if (!varLocations) return;
+    const varLocations: any = initializeScene(gl, astToRender, isEditingGLSL, varNames);
+    if (!varLocations) {
+       setError(lang === 'pt' ? "Erro na compilação do Shader GLSL. Verifique a sintaxe ou o console do navegador." : "GLSL Shader compilation error. Please check syntax or browser developer console.");
+       return;
+    } else {
+       setError(null);
+    }
 
     let animationFrameId: number;
     const render = () => {
@@ -273,7 +292,7 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
     };
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [lastValidAst, variables, dimensions, kConfirmed]);
+  }, [lastValidAst, variables, dimensions, kConfirmed, glslCode, isEditingGLSL]);
 
   // Track wheel zoom
   useEffect(() => {
@@ -642,13 +661,35 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
           </button>
           
           {showSettings && (
-            <div className="bg-zinc-950/40 backdrop-blur-md border border-zinc-800/60 p-4 rounded-xl shadow-2xl w-64 flex flex-col gap-4 mt-2 pointer-events-auto">
+            <div className={`bg-zinc-950/40 backdrop-blur-md border border-zinc-800/60 p-4 rounded-xl shadow-2xl ${isEditingGLSL ? 'w-96' : 'w-64'} flex flex-col gap-4 mt-2 pointer-events-auto transition-all duration-300`}>
               <Switch label={t.enableAxes} checked={variables.enable_axes[0] > 0.5} onChange={c => setVariables({...variables, enable_axes: [c?1:0, 0]})} />
               <Switch label={t.cartesian} checked={variables.grid_type[0] > 0.5} onChange={c => setVariables({...variables, grid_type: [c?1:0, 0]})} />
               <Switch label={t.polar} checked={variables.polar_grid[0] > 0.5} onChange={c => setVariables({...variables, polar_grid: [c?1:0, 0]})} />
               <Switch label={t.enableCheckerboard} checked={variables.enable_checkerboard[0] > 0.5} onChange={c => setVariables({...variables, enable_checkerboard: [c?1:0, 0]})} />
               <Switch label={t.invertGradient} checked={variables.invert_gradient[0] > 0.5} onChange={c => setVariables({...variables, invert_gradient: [c?1:0, 0]})} />
               <Switch label={t.continuousGradient} checked={variables.continuous_gradient[0] > 0.5} onChange={c => setVariables({...variables, continuous_gradient: [c?1:0, 0]})} />
+              <Switch label={lang === 'pt' ? "Editar Código GLSL" : "Edit GLSL Code"} checked={isEditingGLSL} onChange={c => {
+                 setIsEditingGLSL(c);
+                 if (!c) {
+                    setError(null);
+                 }
+              }} />
+
+              {isEditingGLSL && (
+                <div className="flex flex-col gap-1.5 border-t border-zinc-800/40 pt-3">
+                  <span className="text-xs font-semibold text-zinc-400 font-mono">vec2 mapping(vec2 z)</span>
+                  <textarea
+                    value={glslCode}
+                    onChange={e => setGlslCode(e.target.value)}
+                    rows={10}
+                    spellCheck={false}
+                    className="w-full bg-zinc-900/60 border border-zinc-800/80 text-emerald-400 font-mono p-2.5 rounded-lg text-xs outline-none focus:border-emerald-500 resize-none custom-scrollbar"
+                  />
+                  <p className="text-[10px] text-zinc-500 italic">
+                    {lang === 'pt' ? "* Altere para escrever loops ou lógicas de fractais customizadas." : "* Modify this to write raw loops or custom fractal logic."}
+                  </p>
+                </div>
+              )}
             </div>
           )}
       </div>

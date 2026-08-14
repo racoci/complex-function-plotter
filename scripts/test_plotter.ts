@@ -3,6 +3,7 @@ import toLaTeX from '../src/components/complex-plotter/gl-code/translators/to-la
 import { FunctionDef } from '../src/components/complex-plotter/gl-code/types';
 import toJS from '../src/components/complex-plotter/gl-code/translators/to-js';
 import { compileGLSL } from '../src/components/complex-plotter/gl-code/translators/to-glsl';
+import { getFragmentShaderSource } from '../src/components/complex-plotter/gl-code/shaders';
 
 function runTests() {
     console.log("=== RUNNING COMPLEX FUNCTION PLOTTER RECURSIVE & SUBSCRIPT ENHANCEMENT TESTS ===");
@@ -175,6 +176,27 @@ function runTests() {
         } catch (e: any) {
             console.log(`  ✓ Successfully blocked inverted loop lower bound > upper bound: "${e.message}"`);
         }
+
+        // ----------------------------------------------------
+        // TEST 9: Custom GLSL Shader Generation Check
+        // ----------------------------------------------------
+        console.log("\n[Test 9] Testing custom GLSL shader generation (custom Mandelbrot loop)...");
+        const customGLSL = `vec2 mapping(vec2 z) {
+  z += t;
+  vec2 c = z;
+  for (int i=0; i<64; i++) {
+    z = cmul(z, z) + c;
+  }
+  return z;
+}`;
+        const shaderSource = getFragmentShaderSource(customGLSL, true, 800, 600, ['t'], false);
+        if (!shaderSource) {
+            throw new Error("Failed to generate fragment shader source for custom GLSL");
+        }
+        if (!shaderSource.includes("vec2 mapping(vec2 z)") || !shaderSource.includes("cmul(z, z)")) {
+            throw new Error("Custom GLSL was not injected correctly into the fragment shader template!");
+        }
+        console.log("  ✓ Successfully generated custom GLSL shader source containing Mandelbrot loop!");
 
         console.log("\n🎉 ALL RECURSIVE & SUBSCRIPT ENHANCEMENT TESTS PASSED SUCCESSFULLY! 🎉\n");
     } catch (err) {

@@ -76,7 +76,7 @@ const vertexShaderSource = `
 `;
 
 
-function getFragmentShaderSource(
+export function getFragmentShaderSource(
   expression: ASTNode | string, 
   customShader: boolean, 
   width: number, 
