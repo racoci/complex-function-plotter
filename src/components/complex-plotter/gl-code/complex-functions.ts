@@ -1,8 +1,9 @@
 import nearley from 'nearley';
 import grammar from './grammar';
+import * as math from 'mathjs';
 
 import compile from './translators/compiler';
-import { ASTNode } from './types';
+import { ASTNode, FunctionDef } from './types';
 
 const compiledGrammar = nearley.Grammar.fromCompiled(grammar);
 
@@ -933,14 +934,203 @@ function parseRawExpression(expression: string): ASTNode | null {
     }
 }
 
-function parseExpression(expression: string): ASTNode | null {
+export function resolveFunctions(
+    ast: ASTNode, 
+    definitions: Record<string, FunctionDef>, 
+    indexValues: Record<string, number>,
+    activeUnrolls: Set<string> = new Set()
+): ASTNode {
+    if (typeof ast === 'number' || typeof ast === 'string') {
+        return ast;
+    }
+    if (!Array.isArray(ast)) return ast;
+
+    const [op, ...args] = ast as [string, ...any[]];
+
+    if (op === 'call') {
+        const name = args[0] as string;
+        const callArgs = args[1] as ASTNode[];
+        
+        const resolvedCallArgs = callArgs.map(arg => resolveFunctions(arg, definitions, indexValues, activeUnrolls));
+
+        let baseName = name;
+        let indexVal: number | undefined = undefined;
+
+        if (name.includes('_')) {
+            const parts = name.split('_');
+            baseName = parts[0];
+            const parsed = parseInt(parts[1], 10);
+            if (!isNaN(parsed)) {
+                indexVal = parsed;
+            }
+        }
+
+        const def = definitions[name] || definitions[baseName] || definitions[`${baseName}_k`] || definitions[`${baseName}_i`] || definitions[`${baseName}_j`];
+        
+        if (def) {
+            const unrollKey = `${name}(${JSON.stringify(resolvedCallArgs)})`;
+            if (activeUnrolls.has(unrollKey)) {
+                throw new Error(`Circular dependency or infinite recursion detected in function calls: ${name}`);
+            }
+            const nextUnrolls = new Set(activeUnrolls);
+            nextUnrolls.add(unrollKey);
+
+            if (def.isIndexed) {
+                const k = indexVal !== undefined ? indexVal : (indexValues[baseName] !== undefined ? indexValues[baseName] : 0);
+                
+                if (k === 0) {
+                    const baseAST = def.baseCase || ['variable', def.param];
+                    const replaced = substituteInAST(baseAST, { [def.param]: resolvedCallArgs[0] });
+                    return resolveFunctions(replaced, definitions, indexValues, nextUnrolls);
+                } else {
+                    const replaced = substituteInAST(def.body, { [def.param]: resolvedCallArgs[0] }, def.indexParam, k);
+                    return resolveFunctions(replaced, definitions, indexValues, nextUnrolls);
+                }
+            } else {
+                const replaced = substituteInAST(def.body, { [def.param]: resolvedCallArgs[0] });
+                return resolveFunctions(replaced, definitions, indexValues, nextUnrolls);
+            }
+        } else {
+            return ['call', name, resolvedCallArgs];
+        }
+    }
+
+    return [op, ...args.map(child => resolveFunctions(child as ASTNode, definitions, indexValues, activeUnrolls))];
+}
+
+function substituteInAST(ast: ASTNode, replacements: Record<string, ASTNode>, indexParam?: string, indexVal?: number): ASTNode {
+    if (typeof ast === 'number' || typeof ast === 'string') {
+        return ast;
+    }
+    if (!Array.isArray(ast)) return ast;
+
+    const [op, ...args] = ast as [string, ...any[]];
+
+    if (op === 'variable') {
+        const name = args[0] as string;
+        
+        if (indexParam && name === indexParam && indexVal !== undefined) {
+            return ['number', indexVal, 0];
+        }
+
+        if (indexParam && indexVal !== undefined && name.includes('_')) {
+            const parts = name.split('_');
+            const base = parts[0];
+            let subExpr = parts[1];
+            if (subExpr.startsWith('{') && subExpr.endsWith('}')) {
+                subExpr = subExpr.substring(1, subExpr.length - 1);
+            }
+            const regex = new RegExp(`\\b${indexParam}\\b`, 'g');
+            const replacedSubExpr = subExpr.replace(regex, indexVal.toString());
+            try {
+                const evaluated = math.evaluate(replacedSubExpr);
+                return ['variable', `${base}_${evaluated}`];
+            } catch (e) {
+                const simple = name.replace(regex, indexVal.toString());
+                return ['variable', simple];
+            }
+        }
+
+        if (replacements[name] !== undefined) {
+            return replacements[name];
+        }
+        return ast;
+    }
+
+    if (op === 'call') {
+        let funcName = args[0] as string;
+        if (indexParam && indexVal !== undefined && funcName.includes('_')) {
+            const parts = funcName.split('_');
+            const base = parts[0];
+            let subExpr = parts[1];
+            if (subExpr.startsWith('{') && subExpr.endsWith('}')) {
+                subExpr = subExpr.substring(1, subExpr.length - 1);
+            }
+            const regex = new RegExp(`\\b${indexParam}\\b`, 'g');
+            const replacedSubExpr = subExpr.replace(regex, indexVal.toString());
+            
+            try {
+                const evaluated = math.evaluate(replacedSubExpr);
+                funcName = `${base}_${evaluated}`;
+            } catch (e) {
+                console.error("Failed to evaluate subscript index expression:", replacedSubExpr);
+            }
+        }
+        return ['call', funcName, args[1].map((child: any) => substituteInAST(child as ASTNode, replacements, indexParam, indexVal))];
+    }
+
+    return [op, ...args.map((child: any) => substituteInAST(child as ASTNode, replacements, indexParam, indexVal))];
+}
+
+export function getASTStats(ast: ASTNode): { depth: number; ops: number } {
+    if (typeof ast === 'number' || typeof ast === 'string') {
+        return { depth: 1, ops: 1 };
+    }
+    if (!Array.isArray(ast)) return { depth: 1, ops: 1 };
+
+    const [op, ...args] = ast as [string, ...any[]];
+    let maxDepth = 0;
+    let totalOps = 1;
+
+    for (const arg of args) {
+        const stats = getASTStats(arg as ASTNode);
+        maxDepth = Math.max(maxDepth, stats.depth);
+        totalOps += stats.ops;
+    }
+
+    return { depth: maxDepth + 1, ops: totalOps };
+}
+
+export function validateLoopBounds(ast: ASTNode): void {
+    if (!Array.isArray(ast)) return;
+    const [op, ...args] = ast as [string, ...any[]];
+    if (op === 'sum' || op === 'prod') {
+        const [expr, idxVar, low, high] = args;
+        const lowVal = typeof low === 'number' ? low : (Array.isArray(low) && low[0] === 'number' ? low[1] : NaN);
+        const highVal = typeof high === 'number' ? high : (Array.isArray(high) && high[0] === 'number' ? high[1] : NaN);
+        if (!isNaN(lowVal) && !isNaN(highVal)) {
+            const iterations = highVal - lowVal;
+            if (iterations > 1000) {
+                throw new Error(`Loop iterations (${iterations}) exceed the safety limit of 1000`);
+            }
+            if (iterations < 0) {
+                throw new Error(`Loop lower bound (${lowVal}) cannot exceed upper bound (${highVal})`);
+            }
+        }
+    }
+    for (let i = 1; i < ast.length; i++) {
+        validateLoopBounds(ast[i] as ASTNode);
+    }
+}
+
+function parseExpression(
+    expression: string, 
+    definitions: Record<string, FunctionDef> = {}, 
+    indexValues: Record<string, number> = {}
+): ASTNode | null {
     try {
         const raw = parseRawExpression(expression);
         if (raw === null) return null;
-        return compile(raw);
+        
+        // Resolve function calls and unroll recursive structures
+        const resolved = resolveFunctions(raw, definitions, indexValues);
+        
+        // Safety check on AST depth and operations count
+        const stats = getASTStats(resolved);
+        if (stats.depth > 100) {
+            throw new Error(`Expression exceeds maximum AST depth limit of 100 (got ${stats.depth})`);
+        }
+        if (stats.ops > 2000) {
+            throw new Error(`Expression exceeds maximum operations limit of 2000 (got ${stats.ops})`);
+        }
+
+        // Loop bounds safety check
+        validateLoopBounds(resolved);
+
+        return compile(resolved);
     } catch (error) {
         console.error(error);
-        return null;
+        throw error;
     }
 }
 
@@ -1003,4 +1193,4 @@ function functionDefinitions(ast: ASTNode | string, LOG_MODE: boolean): string {
     return `${declarationString}\n\n${definitionString}`;
 }
 
-export {complex_functions, parseExpression, functionDefinitions};
+export {complex_functions, parseExpression, parseRawExpression, functionDefinitions};

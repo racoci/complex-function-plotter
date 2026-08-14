@@ -24,6 +24,10 @@ export function toLaTeX(ast: ASTNode | null): string {
 
     if (operator === 'variable') {
         const [name] = args;
+        if (name.includes('_')) {
+            const parts = name.split('_');
+            return `${parts[0]}_{${parts[1]}}`;
+        }
         return name;
     }
 

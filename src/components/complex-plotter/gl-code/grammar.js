@@ -1,6 +1,6 @@
-// @ts-nocheck
 // Generated automatically by nearley, version 2.20.1
 // http://github.com/Hardmath123/nearley
+(function () {
 function id(x) { return x[0]; }
 var grammar = {
     Lexer: undefined,
@@ -133,6 +133,7 @@ var grammar = {
         }
             },
     {"name": "function", "symbols": ["fraction"], "postprocess": id},
+    {"name": "function", "symbols": ["customFunctionCall"], "postprocess": id},
     {"name": "function", "symbols": ["parenthesis2"], "postprocess": id},
     {"name": "loopInitializer", "symbols": [{"literal":"{"}, "_", "variable", "_", {"literal":"="}, "_", "sum", "_", {"literal":"}"}], "postprocess": data => [data[2], data[6]]},
     {"name": "loopInitializer", "symbols": [{"literal":"("}, "_", "variable", "_", {"literal":"="}, "_", "sum", "_", {"literal":")"}], "postprocess": data => [data[2], data[6]]},
@@ -150,6 +151,17 @@ var grammar = {
     {"name": "parenthesis", "symbols": ["literal"], "postprocess": id},
     {"name": "parenthesis2", "symbols": ["parenthesis"], "postprocess": id},
     {"name": "parenthesis2", "symbols": ["parenthesis", {"literal":"!"}], "postprocess": (data) => ['factorial', data[0]]},
+    {"name": "customFunctionCall", "symbols": ["variable", {"literal":"("}, "_", "argsList", "_", {"literal":")"}], "postprocess": 
+        (data) => ['call', data[0][1], data[3]]
+            },
+    {"name": "customFunctionCall", "symbols": ["variable", {"literal":"["}, "_", "argsList", "_", {"literal":"]"}], "postprocess": 
+        (data) => ['call', data[0][1], data[3]]
+            },
+    {"name": "customFunctionCall", "symbols": ["variable", {"literal":"{"}, "_", "argsList", "_", {"literal":"}"}], "postprocess": 
+        (data) => ['call', data[0][1], data[3]]
+            },
+    {"name": "argsList", "symbols": ["sum", "_", {"literal":","}, "_", "argsList"], "postprocess": (data) => [data[0], ...data[4]]},
+    {"name": "argsList", "symbols": ["sum"], "postprocess": (data) => [data[0]]},
     {"name": "sumOperator", "symbols": [{"literal":"+"}], "postprocess": () => 'add'},
     {"name": "sumOperator", "symbols": [{"literal":"-"}], "postprocess": () => 'sub'},
     {"name": "sumOperator", "symbols": [{"literal":"−"}], "postprocess": () => 'sub'},
@@ -316,23 +328,54 @@ var grammar = {
     {"name": "literal", "symbols": ["variable"], "postprocess": id},
     {"name": "variable$ebnf$1", "symbols": [/[a-z]/]},
     {"name": "variable$ebnf$1", "symbols": ["variable$ebnf$1", /[a-z]/], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "variable", "symbols": ["variable$ebnf$1"], "postprocess": 
+    {"name": "variable$ebnf$2", "symbols": ["subscript"], "postprocess": id},
+    {"name": "variable$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "variable", "symbols": ["variable$ebnf$1", "variable$ebnf$2"], "postprocess": 
         function(data, l, reject) {
             const constants = ['e', 'pi', 'tau', 'phi'];
-            const token = data[0].join('')
+            const base = data[0].join('');
+            const sub = data[1] || '';
+            const token = base + sub;
             if (token === 'i') {return reject;}
+            const builtins = [
+                'sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'sinh', 'cosh', 'tanh', 'sech', 'csch', 'coth',
+                'arcsin', 'arccos', 'arctan', 'arcsec', 'arccsc', 'arccot', 'arsinh', 'arcosh', 'artanh',
+                'asin', 'acos', 'atan', 'asec', 'acsc', 'acot', 'asinh', 'acosh', 'atanh',
+                'sen', 'seno', 'tg', 'atg', 'arctg', 'cis', 'exp', 'log', 'ln', 'sqrt', 'gamma', 'eta', 'zeta', 'erf',
+                'abs', 'arg', 'sgn', 'conj', 'real', 'imag', 'floor', 'ceil', 'round', 'step', 're', 'im',
+                'nome', 'sm', 'cm', 'j', 'e4', 'e6', 'e8', 'e10', 'e12', 'e14', 'e16', 'lambertw',
+                'beta', 'binom', 'binomial', 'choose', 'sn', 'cn', 'dn', 'min', 'max', 'wp', 'wpp',
+                'theta00', 'theta01', 'theta10', 'theta11', 'sum', 'prod', 'product', 'derivative', 'diff'
+            ];
+            if (builtins.includes(token)) {return reject;}
             return constants.includes(token) ? ['constant', token] : ['variable', token];
         }
         },
+    {"name": "subscript$subexpression$1", "symbols": ["digits"]},
+    {"name": "subscript$subexpression$1", "symbols": [{"literal":"{"}, "subscriptContent", {"literal":"}"}]},
+    {"name": "subscript", "symbols": [{"literal":"_"}, "subscript$subexpression$1"], "postprocess": 
+        (data) => {
+            const val = data[1];
+            if (Array.isArray(val) && val[0] === "{") {
+                return "_" + val[1];
+            }
+            return "_" + val;
+        }
+        },
+    {"name": "subscriptContent$ebnf$1", "symbols": [/[0-9a-zA-Z\-+]/]},
+    {"name": "subscriptContent$ebnf$1", "symbols": ["subscriptContent$ebnf$1", /[0-9a-zA-Z\-+]/], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "subscriptContent", "symbols": ["subscriptContent$ebnf$1"], "postprocess": (data) => data[0].join('')},
+    {"name": "digits$ebnf$1", "symbols": [/[0-9]/]},
+    {"name": "digits$ebnf$1", "symbols": ["digits$ebnf$1", /[0-9]/], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "digits", "symbols": ["digits$ebnf$1"], "postprocess": (data) => data[0].join('')},
     {"name": "complexNumber", "symbols": ["decimal"], "postprocess": (data) => ['number', data[0], 0]},
     {"name": "complexNumber", "symbols": ["decimal", {"literal":"i"}], "postprocess": (data) => ['number', 0, data[0]]},
     {"name": "complexNumber", "symbols": [{"literal":"i"}], "postprocess": () => ['number', 0, 1]}
 ]
   , ParserStart: "sum"
 }
-if (typeof module !== 'undefined'&& typeof module.exports !== 'undefined') {
-   module.exports = grammar;
-} else {
-   // window.grammar = grammar;
+if (typeof globalThis !== 'undefined') {
+   globalThis.grammar = grammar;
 }
-export default grammar;
+})();
+export default globalThis.grammar;

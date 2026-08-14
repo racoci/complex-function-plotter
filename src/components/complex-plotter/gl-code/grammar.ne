@@ -45,6 +45,7 @@ function ->
         }
     %}
     | fraction {% id %}
+    | customFunctionCall {% id %}
     | parenthesis2 {% id %}
 
 loopInitializer ->
@@ -71,6 +72,21 @@ parenthesis ->
 parenthesis2 ->
     parenthesis {% id %}
     | parenthesis "!" {% (data) => ['factorial', data[0]] %}
+
+customFunctionCall ->
+    variable "(" _ argsList _ ")" {%
+        (data) => ['call', data[0][1], data[3]]
+    %}
+    | variable "[" _ argsList _ "]" {%
+        (data) => ['call', data[0][1], data[3]]
+    %}
+    | variable "{" _ argsList _ "}" {%
+        (data) => ['call', data[0][1], data[3]]
+    %}
+
+argsList ->
+    sum _ "," _ argsList {% (data) => [data[0], ...data[4]] %}
+    | sum {% (data) => [data[0]] %}
 
 
 ##### Operators #####
@@ -186,14 +202,41 @@ literal ->
     | variable {% id %}
 
 
-variable -> [a-z]:+ {%
+variable -> [a-z]:+ subscript:? {%
     function(data, l, reject) {
         const constants = ['e', 'pi', 'tau', 'phi'];
-        const token = data[0].join('')
+        const base = data[0].join('');
+        const sub = data[1] || '';
+        const token = base + sub;
         if (token === 'i') {return reject;}
+        const builtins = [
+            'sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'sinh', 'cosh', 'tanh', 'sech', 'csch', 'coth',
+            'arcsin', 'arccos', 'arctan', 'arcsec', 'arccsc', 'arccot', 'arsinh', 'arcosh', 'artanh',
+            'asin', 'acos', 'atan', 'asec', 'acsc', 'acot', 'asinh', 'acosh', 'atanh',
+            'sen', 'seno', 'tg', 'atg', 'arctg', 'cis', 'exp', 'log', 'ln', 'sqrt', 'gamma', 'eta', 'zeta', 'erf',
+            'abs', 'arg', 'sgn', 'conj', 'real', 'imag', 'floor', 'ceil', 'round', 'step', 're', 'im',
+            'nome', 'sm', 'cm', 'j', 'e4', 'e6', 'e8', 'e10', 'e12', 'e14', 'e16', 'lambertw',
+            'beta', 'binom', 'binomial', 'choose', 'sn', 'cn', 'dn', 'min', 'max', 'wp', 'wpp',
+            'theta00', 'theta01', 'theta10', 'theta11', 'sum', 'prod', 'product', 'derivative', 'diff'
+        ];
+        if (builtins.includes(token)) {return reject;}
         return constants.includes(token) ? ['constant', token] : ['variable', token];
     }
 %}
+
+subscript -> "_" (digits | "{" subscriptContent "}") {%
+    (data) => {
+        const val = data[1];
+        if (Array.isArray(val) && val[0] === "{") {
+            return "_" + val[1];
+        }
+        return "_" + val;
+    }
+%}
+
+subscriptContent -> [0-9a-zA-Z\-+]:+ {% (data) => data[0].join('') %}
+
+digits -> [0-9]:+ {% (data) => data[0].join('') %}
 
 complexNumber ->
     decimal {% (data) => ['number', data[0], 0] %}
