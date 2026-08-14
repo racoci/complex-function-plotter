@@ -174,4 +174,26 @@ On every push to the `master` branch:
 *   **Important Setting:** In the GitHub Repository **Settings -> Pages -> Build and deployment -> Source**, you MUST select **"GitHub Actions"**. If this is set to "Deploy from a branch", GitHub Pages will ignore our direct deployments and automatically trigger a hidden `"pages build and deployment"` job that serves the raw `master` branch files, leading to immediate MIME-type crashes.
 
 ---
+
+## 9. Recent Architecture Enhancements (Subscripts, Loop Unrolling, Safety Guards, & Fluid Editor)
+
+### A. Subscript Variable Support
+The Nearley parser grammar (`grammar.ne`) and translators are configured to parse and evaluate complex variables with subscripts (e.g. `c_1`, `c_{12}`, `c_{k-1}`). The compilers accurately propagate these variable tokens to the WebGL rendering pipeline and LaTeX output layers.
+
+### B. Closed-Loop Recursive Unrolling ($f_k$)
+To render recursive indexed functions like $f_k(z) = f_{k-1}(z - c_k)$ with case $f_0(z) = z$ without GPU-side stack frames (forbidden in WebGL fragment shaders), the translation pipeline unrolls recursion into a closed, flat linear form at compilation time. 
+
+### C. Prompt Selection Overlay
+Before visualizing indexed functions, the app overlays a backdrop-blur modal forcing the user to select the value of $k$ (e.g., $f_{k=37}(z)$), allowing the compiler to perform deterministic AST unrolling.
+
+### D. Multi-Line Fluid Text Formula Editor
+The active custom function definitions are managed via a single, responsive, multi-line `<textarea>` inside the left accordion sidebar. It parses and validates formulas line-by-line as the user types, reporting errors in a red list directly beneath the editor with custom transparent emerald scrollbars.
+
+### E. Security Guardrails
+Strict safety limits prevent CPU/GPU freezes:
+1. **AST Depth Check:** Rejects expressions exceeding $100$ node depth.
+2. **Loop Iteration Limits:** Limit sum/product loops to a maximum of $1000$ iterations.
+3. **JS/CPU-Side Pre-Evaluation Gate:** Evaluates newly defined formulas at a test point on the CPU with a strict execution timeout before triggering WebGL shader compilation.
+
+---
 *Created with love and mathematics. Ready for future iterations. No further context required.*

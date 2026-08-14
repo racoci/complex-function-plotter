@@ -142,12 +142,13 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   const [showSettings, setShowSettings] = useState(false);
   const [showDefinitionsEditor, setShowDefinitionsEditor] = useState(false);
 
-  // New custom function form state
-  const [newFuncName, setNewFuncName] = useState("");
-  const [newFuncParam, setNewFuncParam] = useState("z");
-  const [newFuncBody, setNewFuncBody] = useState("");
-  const [newFuncIsIndexed, setNewFuncIsIndexed] = useState(false);
-  const [newFuncBaseCase, setNewFuncBaseCase] = useState("z");
+  // Local state for the freeform multi-line text editor
+  const [editorText, setEditorText] = useState<string>(
+    `f(z) = z^2 + c
+g(z) = sin(z) * c_1
+f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
+  );
+  const [editorErrors, setEditorErrors] = useState<string[]>([]);
 
   // Dragging custom variables
   const [activeVar, setActiveVar] = useState<string | null>(null);
@@ -357,66 +358,87 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
     </label>
   );
 
-  // Edit custom formulas handler
-  const handleFormulaChange = (key: string, field: "body" | "baseCase", val: string) => {
-    try {
-      const mathliveAlgebraic = convertMathLiveToAlgebraic(val);
-      const parsed = parseExpression(mathliveAlgebraic);
-      if (parsed) {
-        setFunctionDefs(prev => {
-          const next = { ...prev };
-          if (field === "body") {
-            next[key] = { ...next[key], body: parsed };
-          } else {
-            next[key] = { ...next[key], baseCase: parsed };
-          }
-          return next;
-        });
-        setError(null);
-      } else {
-        setError("Parsing Error");
-      }
-    } catch (e: any) {
-      setError(e?.message || "Invalid formula syntax");
-    }
-  };
+  // Automatically parse and compile the freeform multi-line editorText into functionDefs
+  useEffect(() => {
+    const lines = editorText.split('\n');
+    const newDefs: Record<string, FunctionDef> = {};
+    const currentErrors: string[] = [];
 
-  // Add new function handler
-  const handleAddFunction = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFuncName || !newFuncBody) return;
-    try {
-      const parsedBody = parseExpression(convertMathLiveToAlgebraic(newFuncBody));
-      if (!parsedBody) throw new Error("Body parsing failed");
-      
-      let parsedBase: any = undefined;
-      if (newFuncIsIndexed && newFuncBaseCase) {
-         parsedBase = parseExpression(convertMathLiveToAlgebraic(newFuncBaseCase));
-      }
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return; // Skip empty lines and comments
 
-      const newKey = newFuncIsIndexed ? `${newFuncName}_k` : newFuncName;
-      setFunctionDefs(prev => ({
-        ...prev,
-        [newKey]: {
-          name: newFuncName,
-          param: newFuncParam,
-          body: parsedBody,
-          isIndexed: newFuncIsIndexed,
-          indexParam: newFuncIsIndexed ? "k" : undefined,
-          baseCase: parsedBase
+      // Try matching indexed recursive function: f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z
+      const indexedMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_([a-zA-Z_])\((.*?)\)\s*=\s*(.*?)\s+(?:with|where|;|,\s*)\s+\1_0\((.*?)\)\s*=\s*(.*)$/i);
+      if (indexedMatch) {
+        const name = indexedMatch[1];
+        const indexParam = indexedMatch[2];
+        const param = indexedMatch[3].trim();
+        const bodyStr = indexedMatch[4].trim();
+        const baseParam = indexedMatch[5].trim();
+        const baseCaseStr = indexedMatch[6].trim();
+
+        try {
+          const bodyAST = parseExpression(bodyStr);
+          if (!bodyAST) throw new Error(`Falha ao compilar fórmula: "${bodyStr}"`);
+          
+          const baseCaseAST = parseExpression(baseCaseStr);
+          if (!baseCaseAST) throw new Error(`Falha ao compilar caso base: "${baseCaseStr}"`);
+
+          const key = `${name}_${indexParam}`;
+          newDefs[key] = {
+            name: `${name}_${indexParam}`,
+            param,
+            isIndexed: true,
+            indexParam,
+            body: bodyAST,
+            baseCase: baseCaseAST
+          };
+        } catch (err: any) {
+          currentErrors.push(`${lang === 'pt' ? 'Linha' : 'Line'} ${index + 1}: ${err.message || 'Sintaxe inválida'}`);
         }
-      }));
+        return;
+      }
 
-      // Reset fields
-      setNewFuncName("");
-      setNewFuncBody("");
-      setNewFuncBaseCase("z");
-      setShowDefinitionsEditor(false);
-      setSelectedFunction(newKey);
-    } catch (err: any) {
-      setError(err?.message || "Error adding custom function");
+      // Try matching standard function: f(z) = z^2 + c
+      const standardMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)\s*=\s*(.*)$/);
+      if (standardMatch) {
+        const name = standardMatch[1];
+        const param = standardMatch[2].trim();
+        const bodyStr = standardMatch[3].trim();
+
+        try {
+          const bodyAST = parseExpression(bodyStr);
+          if (!bodyAST) throw new Error(`Falha ao compilar fórmula: "${bodyStr}"`);
+
+          newDefs[name] = {
+            name,
+            param,
+            body: bodyAST,
+            isIndexed: false
+          };
+        } catch (err: any) {
+          currentErrors.push(`${lang === 'pt' ? 'Linha' : 'Line'} ${index + 1}: ${err.message || 'Sintaxe inválida'}`);
+        }
+        return;
+      }
+
+      currentErrors.push(`${lang === 'pt' ? 'Linha' : 'Line'} ${index + 1}: Formato inválido. Use "f(z) = expr" ou "f_k(z) = expr with f_0(z) = base"`);
+    });
+
+    setEditorErrors(currentErrors);
+
+    // If there are no errors and we parsed at least one definition, update the active definitions!
+    if (currentErrors.length === 0 && Object.keys(newDefs).length > 0) {
+      setFunctionDefs(newDefs);
+      
+      // Auto-fallback for selected function if previous one is deleted
+      if (!newDefs[selectedFunction]) {
+         const firstKey = Object.keys(newDefs)[0];
+         setSelectedFunction(firstKey);
+      }
     }
-  };
+  }, [editorText, lang]);
 
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-black font-sans shadow-2xl">
@@ -533,77 +555,26 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
               </svg>
             </button>
             {showDefinitionsEditor && (
-              <div className="p-3.5 border-t border-zinc-800/40 flex flex-col gap-3 max-h-96 overflow-y-auto">
-                
-                {/* Active Definitions List */}
-                {Object.keys(functionDefs).map(key => {
-                   const def = functionDefs[key];
-                   return (
-                     <div key={key} className="p-2.5 bg-zinc-900/40 border border-zinc-800/50 rounded-lg flex flex-col gap-2">
-                       <span className="text-xs font-bold text-zinc-400 font-mono">{def.isIndexed ? `${def.name}(${def.param}) (Recursive)` : `${def.name}(${def.param})`}</span>
-                       <div className="flex items-center gap-1 text-xs">
-                         <span className="text-zinc-500">{t.formulaBody}:</span>
-                         <input 
-                           type="text" 
-                           defaultValue={key === "f" ? "z^2 + c" : (key === "g" ? "sin(z) * c_1" : "f_{k-1}(z - c_k)")}
-                           onBlur={e => handleFormulaChange(key, "body", e.target.value)}
-                           className="flex-1 bg-zinc-950 border border-zinc-800/80 rounded px-1.5 py-0.5 text-emerald-300 font-mono outline-none focus:border-emerald-500"
-                         />
-                       </div>
-                       {def.isIndexed && (
-                          <div className="flex items-center gap-1 text-xs">
-                            <span className="text-zinc-500">{t.baseCase}:</span>
-                            <input 
-                              type="text" 
-                              defaultValue="z"
-                              onBlur={e => handleFormulaChange(key, "baseCase", e.target.value)}
-                              className="flex-1 bg-zinc-950 border border-zinc-800/80 rounded px-1.5 py-0.5 text-emerald-300 font-mono outline-none focus:border-emerald-500"
-                            />
-                          </div>
-                       )}
-                     </div>
-                   );
-                })}
+              <div className="p-3.5 border-t border-zinc-800/40 flex flex-col gap-3 custom-scrollbar overflow-y-auto max-h-96">
+                <textarea
+                  value={editorText}
+                  onChange={e => setEditorText(e.target.value)}
+                  spellCheck={false}
+                  rows={6}
+                  className={`w-full min-h-[160px] bg-zinc-900/60 border ${editorErrors.length > 0 ? 'border-red-500/80 focus:border-red-400' : 'border-zinc-800/80 focus:border-emerald-500'} text-emerald-300 font-mono p-3 rounded-lg text-xs outline-none resize-none transition-all custom-scrollbar`}
+                  placeholder={lang === 'pt' ? "# Escreva uma fórmula por linha\nf(z) = z^2 + c\ng(z) = sin(z) * c_1\nf_k(z) = f_{k-1}(z - c_k) with f_0(z) = z" : "# Write one formula per line\nf(z) = z^2 + c\ng(z) = sin(z) * c_1\nf_k(z) = f_{k-1}(z - c_k) with f_0(z) = z"}
+                />
 
-                {/* Add New Function Form */}
-                <form onSubmit={handleAddFunction} className="border-t border-zinc-800/50 pt-3 flex flex-col gap-2">
-                  <span className="text-xs font-bold text-zinc-300">{t.addFunc}</span>
-                  <div className="grid grid-cols-2 gap-2">
-                     <input 
-                       type="text" placeholder={t.funcName} value={newFuncName}
-                       onChange={e => setNewFuncName(e.target.value)}
-                       className="bg-zinc-900 border border-zinc-800 rounded p-1.5 text-xs text-zinc-200 outline-none"
-                     />
-                     <input 
-                       type="text" placeholder={t.paramName} value={newFuncParam}
-                       onChange={e => setNewFuncParam(e.target.value)}
-                       className="bg-zinc-900 border border-zinc-800 rounded p-1.5 text-xs text-zinc-200 outline-none"
-                     />
+                {editorErrors.length > 0 && (
+                  <div className="flex flex-col gap-1.5 bg-red-950/20 border border-red-900/40 p-3 rounded-lg text-[11px] font-mono text-red-400 custom-scrollbar max-h-28 overflow-y-auto">
+                    {editorErrors.map((err, i) => (
+                      <div key={i} className="flex gap-1.5 items-start">
+                        <span className="text-red-500">✕</span>
+                        <span>{err}</span>
+                      </div>
+                    ))}
                   </div>
-                  <input 
-                    type="text" placeholder={t.formulaBody} value={newFuncBody}
-                    onChange={e => setNewFuncBody(e.target.value)}
-                    className="bg-zinc-900 border border-zinc-800 rounded p-1.5 text-xs text-zinc-200 outline-none"
-                  />
-                  <div className="flex items-center gap-2">
-                     <input 
-                       type="checkbox" checked={newFuncIsIndexed}
-                       onChange={e => setNewFuncIsIndexed(e.target.checked)}
-                       className="accent-emerald-500"
-                     />
-                     <label className="text-xs text-zinc-400">{t.isIndexed}</label>
-                  </div>
-                  {newFuncIsIndexed && (
-                     <input 
-                       type="text" placeholder={t.baseCase} value={newFuncBaseCase}
-                       onChange={e => setNewFuncBaseCase(e.target.value)}
-                       className="bg-zinc-900 border border-zinc-800 rounded p-1.5 text-xs text-zinc-200 outline-none"
-                     />
-                  )}
-                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-zinc-100 p-1.5 text-xs font-bold rounded transition-colors mt-1">
-                     + {t.addFunc}
-                  </button>
-                </form>
+                )}
               </div>
             )}
          </div>
