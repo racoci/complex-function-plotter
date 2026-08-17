@@ -228,6 +228,39 @@ function runTests() {
         }
         console.log("  ✓ All required system uniforms are successfully declared in the generated shader!");
 
+        // ----------------------------------------------------
+        // TEST 11: Recursive Indexed GLSL Loop End-to-End Compile Check
+        // ----------------------------------------------------
+        console.log("\n[Test 11] Testing recursive indexed GLSL loop end-to-end compile...");
+        const recursiveExpr11 = "f_k(z)";
+        const recursiveDefs11: Record<string, FunctionDef> = {
+            "f_k": {
+                name: "f_k",
+                param: "z",
+                isIndexed: true,
+                indexParam: "k",
+                body: parseExpression("f_{k-1}(z)^2 + c")!,
+                baseCase: parseExpression("z")!
+            }
+        };
+        const recursiveIdxs11 = { "f_k": 12, "f": 12 };
+        
+        // Compile using parseExpression with glslLoopMode = true to generate indexed_loop node
+        const loopAST = parseExpression(recursiveExpr11, recursiveDefs11, recursiveIdxs11, true);
+        if (!loopAST) {
+            throw new Error("Failed to parse recursive indexed expression in loop mode for Test 11");
+        }
+
+        // Call getFragmentShaderSource in LOG_MODE = true (to test log_dependencies)
+        const finalLoopShader = getFragmentShaderSource(loopAST, false, 800, 600, ["c"], true);
+        if (!finalLoopShader) {
+            throw new Error("Failed to compile recursive indexed GLSL loop shader!");
+        }
+        if (!finalLoopShader.includes("indexed_loop_helper_0") || !finalLoopShader.includes("for (int _i = 1; _i <= 12; _i++)")) {
+            throw new Error("Generated shader was missing the native GLSL for-loop helper structure!");
+        }
+        console.log("  ✓ Successfully generated and verified recursive indexed GLSL loop shader under log-cart representation!");
+
         console.log("\n🎉 ALL RECURSIVE & SUBSCRIPT ENHANCEMENT TESTS PASSED SUCCESSFULLY! 🎉\n");
     } catch (err) {
         console.error("\n❌ ENHANCEMENT TESTS FAILED:");
