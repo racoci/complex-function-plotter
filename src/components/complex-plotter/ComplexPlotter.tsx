@@ -148,7 +148,8 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   const [formulaLines, setFormulaLines] = useState<string[]>([
     "f(z) = z^2 + c",
     "g(z) = \\sin(z) \\cdot c_1",
-    "f_k(z) = f_{k-1}(z - c_k) \\text{ with } f_0(z) = z"
+    "f_k(z) = f_{k-1}(z - c_k)",
+    "f_0(z) = z"
   ]);
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
 
@@ -379,34 +380,44 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   );
 
   // Automatically parse and compile the freeform formulas lines edited via MathLive into functionDefs
+  // Supports separate line base cases (e.g. f_0(z) = z) with dynamic trivial fallback if missing.
   useEffect(() => {
     const newDefs: Record<string, FunctionDef> = {};
     const currentErrors: string[] = [];
 
+    // First pass: parse all lines into temporary structures
+    interface TempDef {
+      lineIndex: number;
+      type: 'indexed' | 'numericBase' | 'standard';
+      baseName: string;
+      sub?: string; // index variable or numeric string
+      param: string;
+      bodyStr: string;
+      bodyAST?: any;
+    }
+
+    const tempDefs: TempDef[] = [];
+
     formulaLines.forEach((line, index) => {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) return; // Skip empty lines and comments
+      if (!trimmed || trimmed.startsWith('#')) return; // Skip empty/comments
 
       // Convert LaTeX to algebraic
       let algebraic = convertMathLiveToAlgebraic(trimmed);
-      // Clean up braces around separators (leftovers from \text{ with } or \text{where})
       algebraic = algebraic.replace(/\{?\s*(with|where)\s*\}?/gi, ' $1 ');
 
-      // Try matching indexed recursive function: f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z
-      // Support optional curly braces on subscripts (e.g. f_{k}(z) from MathLive)
-      const indexedMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_])\}?\((.*?)\)\s*=\s*(.*?)\s+(?:with|where|;|,\s*)\s+\1_0\((.*?)\)\s*=\s*(.*)$/i);
-      if (indexedMatch) {
-        const name = indexedMatch[1];
-        const indexParam = indexedMatch[2];
-        const param = indexedMatch[3].trim();
-        const bodyStr = indexedMatch[4].trim();
-        const baseParam = indexedMatch[5].trim();
-        const baseCaseStr = indexedMatch[6].trim();
+      // Check if they typed the inline "with" style (compatibility check)
+      const inlineIndexedMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_])\}?\((.*?)\)\s*=\s*(.*?)\s+(?:with|where|;|,\s*)\s+\1_0\((.*?)\)\s*=\s*(.*)$/i);
+      if (inlineIndexedMatch) {
+        const name = inlineIndexedMatch[1];
+        const indexParam = inlineIndexedMatch[2];
+        const param = inlineIndexedMatch[3].trim();
+        const bodyStr = inlineIndexedMatch[4].trim();
+        const baseCaseStr = inlineIndexedMatch[6].trim();
 
         try {
           const bodyAST = parseExpression(bodyStr);
           if (!bodyAST) throw new Error(`Falha ao compilar fórmula: "${bodyStr}"`);
-          
           const baseCaseAST = parseExpression(baseCaseStr);
           if (!baseCaseAST) throw new Error(`Falha ao compilar caso base: "${baseCaseStr}"`);
 
@@ -425,31 +436,128 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
         return;
       }
 
-      // Try matching standard function: f(z) = z^2 + c
-      const standardMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)\s*=\s*(.*)$/);
-      if (standardMatch) {
-        const name = standardMatch[1];
-        const param = standardMatch[2].trim();
-        const bodyStr = standardMatch[3].trim();
+      // Check for separate line styles:
+      // A. Indexed function definition, e.g. f_k(z) = f_{k-1}(z)^2 + c
+      const indexedMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_])\}?\((.*?)\)\s*=\s*(.*)$/i);
+      if (indexedMatch) {
+        const baseName = indexedMatch[1];
+        const indexParam = indexedMatch[2];
+        const param = indexedMatch[3].trim();
+        const bodyStr = indexedMatch[4].trim();
 
-        try {
-          const bodyAST = parseExpression(bodyStr);
-          if (!bodyAST) throw new Error(`Falha ao compilar fórmula: "${bodyStr}"`);
-
-          newDefs[name] = {
-            name,
-            param,
-            body: bodyAST,
-            isIndexed: false
-          };
-        } catch (err: any) {
-          currentErrors.push(`${lang === 'pt' ? 'Linha' : 'Line'} ${index + 1}: ${err.message || 'Sintaxe inválida'}`);
-        }
+        tempDefs.push({
+          lineIndex: index,
+          type: 'indexed',
+          baseName,
+          sub: indexParam,
+          param,
+          bodyStr
+        });
         return;
       }
 
-      currentErrors.push(`${lang === 'pt' ? 'Linha' : 'Line'} ${index + 1}: Formato inválido. Use "f(z) = expr" ou "f_k(z) = expr with f_0(z) = base"`);
+      // B. Numeric base case definition, e.g. f_0(z) = z + t
+      const numericBaseMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([0-9]+)\}?\((.*?)\)\s*=\s*(.*)$/i);
+      if (numericBaseMatch) {
+        const baseName = numericBaseMatch[1];
+        const indexVal = numericBaseMatch[2];
+        const param = numericBaseMatch[3].trim();
+        const bodyStr = numericBaseMatch[4].trim();
+
+        tempDefs.push({
+          lineIndex: index,
+          type: 'numericBase',
+          baseName,
+          sub: indexVal,
+          param,
+          bodyStr
+        });
+        return;
+      }
+
+      // C. Standard function definition, e.g. g(z) = sin(z) * c_1
+      const standardMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)\s*=\s*(.*)$/);
+      if (standardMatch) {
+        const baseName = standardMatch[1];
+        const param = standardMatch[2].trim();
+        const bodyStr = standardMatch[3].trim();
+
+        tempDefs.push({
+          lineIndex: index,
+          type: 'standard',
+          baseName,
+          param,
+          bodyStr
+        });
+        return;
+      }
+
+      currentErrors.push(`${lang === 'pt' ? 'Linha' : 'Line'} ${index + 1}: Formato inválido. Use "f(z) = expr" ou "f_k(z) = expr"`);
     });
+
+    // Parse all temporary bodies
+    tempDefs.forEach(td => {
+      try {
+        td.bodyAST = parseExpression(td.bodyStr);
+        if (!td.bodyAST) throw new Error(`Falha ao compilar fórmula: "${td.bodyStr}"`);
+      } catch (err: any) {
+        currentErrors.push(`${lang === 'pt' ? 'Linha' : 'Line'} ${td.lineIndex + 1}: ${err.message || 'Sintaxe inválida'}`);
+      }
+    });
+
+    // Assemble final definitions list if there are no compiling errors
+    if (currentErrors.length === 0 && tempDefs.length > 0) {
+      // Find separate indexed functions and couple them with their respective base cases
+      const indexedDefs = tempDefs.filter(td => td.type === 'indexed');
+      const baseDefs = tempDefs.filter(td => td.type === 'numericBase');
+      const standardDefs = tempDefs.filter(td => td.type === 'standard');
+
+      indexedDefs.forEach(id => {
+        // Find if there is a matching base definition (same baseName)
+        const matchingBase = baseDefs.find(bd => bd.baseName === id.baseName);
+        let baseCaseAST = matchingBase?.bodyAST;
+
+        if (!baseCaseAST) {
+          // Automatic trivial base case fallback: f_0(z) = z
+          baseCaseAST = ["variable", id.param];
+        }
+
+        const key = `${id.baseName}_${id.sub}`;
+        newDefs[key] = {
+          name: `${id.baseName}_${id.sub}`,
+          param: id.param,
+          isIndexed: true,
+          indexParam: id.sub!,
+          body: id.bodyAST,
+          baseCase: baseCaseAST
+        };
+      });
+
+      // Add standard definitions
+      standardDefs.forEach(sd => {
+        newDefs[sd.baseName] = {
+          name: sd.baseName,
+          param: sd.param,
+          body: sd.bodyAST,
+          isIndexed: false
+        };
+      });
+
+      // Add numeric base definitions ONLY if they were NOT claimed by any indexed definition,
+      // so the user can still plot them standalone if desired, but we keep the list clean.
+      baseDefs.forEach(bd => {
+        const isClaimed = indexedDefs.some(id => id.baseName === bd.baseName);
+        if (!isClaimed) {
+          const key = `${bd.baseName}_${bd.sub}`;
+          newDefs[key] = {
+            name: `${bd.baseName}_${bd.sub}`,
+            param: bd.param,
+            body: bd.bodyAST,
+            isIndexed: false
+          };
+        }
+      });
+    }
 
     setEditorErrors(currentErrors);
 
