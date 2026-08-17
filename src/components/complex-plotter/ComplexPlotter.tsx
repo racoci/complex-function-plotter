@@ -393,7 +393,8 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
       algebraic = algebraic.replace(/\{?\s*(with|where)\s*\}?/gi, ' $1 ');
 
       // Try matching indexed recursive function: f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z
-      const indexedMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_([a-zA-Z_])\((.*?)\)\s*=\s*(.*?)\s+(?:with|where|;|,\s*)\s+\1_0\((.*?)\)\s*=\s*(.*)$/i);
+      // Support optional curly braces on subscripts (e.g. f_{k}(z) from MathLive)
+      const indexedMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_])\}?\((.*?)\)\s*=\s*(.*?)\s+(?:with|where|;|,\s*)\s+\1_0\((.*?)\)\s*=\s*(.*)$/i);
       if (indexedMatch) {
         const name = indexedMatch[1];
         const indexParam = indexedMatch[2];

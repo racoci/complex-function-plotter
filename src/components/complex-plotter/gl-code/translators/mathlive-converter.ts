@@ -8,6 +8,8 @@ export function convertMathLiveToAlgebraic(latex: string): string {
     let algebraic = latex;
     
     // 1. Clean up spacing and arbitrary MathLive formatting artifacts
+    algebraic = algebraic.replace(/\\left\./g, '');
+    algebraic = algebraic.replace(/\\right\./g, '');
     algebraic = algebraic.replace(/\\left/g, '');
     algebraic = algebraic.replace(/\\right/g, '');
     algebraic = algebraic.replace(/\\,/g, ' ');
