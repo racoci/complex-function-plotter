@@ -558,8 +558,8 @@ ${g} ${h}(${y}) {
   void main() {
     gl_Position = vec4(a_position, 0, 1);
   }
-`;function Xge(e,t,r,n,a,i){const s=(r/2).toFixed(2),u=(n/2).toFixed(2),c=(typeof window<"u"?window.devicePixelRatio:1).toFixed(4),l=i?"vec3":"vec2",m=a.map(y=>`uniform ${l} ${y};`).join(`
-`);let d="",h=null,g="";if(t)d=e,h="mapping(z)";else{const y=n5(e,i);if(!y)return null;h=y.expression,g=y.helpers,i&&h&&(h=`upconvert(${h})`)}return h===null?null:(console.log("Compiled AST:",e),console.log(`Shader Code (${i?"log-cart":"cartesian"}):`,h),`
+`;function Xge(e,t,r,n,a,i){const s=(r/2).toFixed(2),u=(n/2).toFixed(2),c=(typeof window<"u"?window.devicePixelRatio:1).toFixed(4),l=i?"vec3":"vec2",m=["log_scale","center_x","center_y","enable_axes","enable_checkerboard","invert_gradient","continuous_gradient","grid_type","polar_grid"],h=Array.from(new Set([...a,...m])).map(A=>`uniform ${l} ${A};`).join(`
+`);let g="",y=null,w="";if(t)g=e,y="mapping(z)";else{const A=n5(e,i);if(!A)return null;y=A.expression,w=A.helpers,i&&y&&(y=`upconvert(${y})`)}return y===null?null:(console.log("Compiled AST:",e),console.log(`Shader Code (${i?"log-cart":"cartesian"}):`,y),`
   #ifdef GL_FRAGMENT_PRECISION_HIGH
     precision highp float;
   #else
@@ -585,7 +585,7 @@ ${g} ${h}(${y}) {
   const ${l} C_E = ${i?"vec3(E, 0, 0)":"vec2(E, 0)"};
   const ${l} C_PHI = ${i?"vec3(PHI, 0, 0)":"vec2(PHI, 0)"};
 
-  ${m}
+  ${h}
 
   vec2 clogcart(${l} z) {return vec2(${i?"log(length(z.xy)) + z.z":"log(length(z))"}, atan(z.y, z.x+1e-20));}
   vec2 encodereal(float a) {return vec2(log(abs(a)), 0.5*PI*(1. - sign(a)));}
@@ -653,8 +653,8 @@ ${i?"color_value += (0.75 - color_value) * (1. - phase_decay_factor);":""}
     return hsv2rgb(hsv_color);
   }
 
+  ${w}
   ${g}
-  ${d}
 
   const vec2 screen_offset = vec2(${s}, ${u});
   vec2 from_pixel(vec2 xy) {
@@ -666,7 +666,7 @@ ${i?"color_value += (0.75 - color_value) * (1. - phase_decay_factor);":""}
   ${l} internal_mapping(vec2 xy) {
       vec2 z_int = from_pixel(xy);
       ${i?"vec3 z = vec3(z_int, 0);":"vec2 z = z_int;"}
-      return ${h};
+      return ${y};
   }
 
   void main() {

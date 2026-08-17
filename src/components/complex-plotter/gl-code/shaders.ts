@@ -90,7 +90,13 @@ export function getFragmentShaderSource(
 
   const vectype = LOG_MODE ? 'vec3' : 'vec2';
 
-  const variableDeclarations = variableNames.map(
+  const systemVars = [
+    'log_scale', 'center_x', 'center_y', 'enable_axes', 'enable_checkerboard',
+    'invert_gradient', 'continuous_gradient', 'grid_type', 'polar_grid'
+  ];
+  const allVarNames = Array.from(new Set([...variableNames, ...systemVars]));
+
+  const variableDeclarations = allVarNames.map(
     (name) => `uniform ${vectype} ${name};`
   ).join('\n');
 
