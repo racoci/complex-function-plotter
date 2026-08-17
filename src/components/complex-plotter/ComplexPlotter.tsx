@@ -123,8 +123,10 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
     }
   }, [selectedFunction, indexValues]);
 
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
   const [variables, setVariables] = useState<any>({
-    log_scale: [1.2, 0],
+    log_scale: [5.5, 0],
     center_x: [0, 0],
     center_y: [0, 0],
     enable_axes: [1, 0],
@@ -150,6 +152,14 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [showSettings, setShowSettings] = useState(false);
   const [showDefinitionsEditor, setShowDefinitionsEditor] = useState(false);
+
+  // Sync invert_gradient with theme
+  useEffect(() => {
+    setVariables((prev: any) => ({
+      ...prev,
+      invert_gradient: [theme === 'dark' ? 1 : 0, 0]
+    }));
+  }, [theme]);
 
   // Local state for the freeform formulas lines edited via MathLive
   const [formulaLines, setFormulaLines] = useState<string[]>([
@@ -327,7 +337,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
          variablesForScene[k] = [varLocations[k] || null, variables[k]];
       }
       if (ctx) {
-        drawScene(gl, variablesForScene, ctx);
+        drawScene(gl, variablesForScene, ctx, theme === 'dark');
       }
       animationFrameId = requestAnimationFrame(render);
     };
@@ -795,12 +805,12 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                           style: {
                             flex: '1',
                             padding: '8px',
-                            backgroundColor: 'rgba(24, 24, 27, 0.6)',
-                            color: '#6ee7b7', // light emerald
+                            backgroundColor: theme === 'dark' ? 'rgba(24, 24, 27, 0.6)' : 'rgba(255, 255, 255, 0.6)',
+                            color: theme === 'dark' ? '#6ee7b7' : '#059669', // emerald
                             borderRadius: '0.375rem',
                             border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
                               ? '1px solid #ef4444' 
-                              : '1px solid rgba(63, 63, 70, 0.5)',
+                              : (theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(209, 213, 219, 0.8)'),
                             boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
                               ? '0 0 8px rgba(239, 68, 68, 0.2)'
                               : 'none',
@@ -903,19 +913,28 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
 
       {/* Floating Right Control Panel: Display Options Button & Box */}
       <div className="absolute top-4 right-4 flex flex-col gap-2 z-40 items-end">
-          <button 
-            onClick={() => setShowSettings(!showSettings)}
-            className="bg-zinc-950/40 backdrop-blur-md border border-zinc-800/60 p-3 rounded-full hover:bg-zinc-900/60 pointer-events-auto transition-colors shadow-lg flex items-center justify-center cursor-pointer"
-            title={t.settings}
-          >
-             <svg className="w-5 h-5 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-             </svg>
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className={`${theme === 'dark' ? 'bg-zinc-950/40 border-zinc-800/60 hover:bg-zinc-900/60 text-zinc-300' : 'bg-white/70 border-gray-200/60 hover:bg-white/90 text-gray-700'} backdrop-blur-md border p-3 rounded-full pointer-events-auto transition-colors shadow-lg flex items-center justify-center cursor-pointer`}
+              title={lang === 'pt' ? 'Alternar Tema' : 'Toggle Theme'}
+            >
+               {theme === 'dark' ? '🌙' : '☀️'}
+            </button>
+            <button 
+              onClick={() => setShowSettings(!showSettings)}
+              className={`${theme === 'dark' ? 'bg-zinc-950/40 border-zinc-800/60 hover:bg-zinc-900/60 text-zinc-300' : 'bg-white/70 border-gray-200/60 hover:bg-white/90 text-gray-700'} backdrop-blur-md border p-3 rounded-full pointer-events-auto transition-colors shadow-lg flex items-center justify-center cursor-pointer`}
+              title={t.settings}
+            >
+               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+               </svg>
+            </button>
+          </div>
           
           {showSettings && (
-            <div className={`bg-zinc-950/40 backdrop-blur-md border border-zinc-800/60 p-4 rounded-xl shadow-2xl ${isEditingGLSL ? 'w-96' : 'w-64'} flex flex-col gap-4 mt-2 pointer-events-auto transition-all duration-300`}>
+            <div className={`${theme === 'dark' ? 'bg-zinc-950/40 border-zinc-800/60' : 'bg-white/70 border-gray-200/60 text-gray-800'} backdrop-blur-md border p-4 rounded-xl shadow-2xl ${isEditingGLSL ? 'w-96' : 'w-64'} flex flex-col gap-4 mt-2 pointer-events-auto transition-all duration-300`}>
               <Switch label={t.enableAxes} checked={variables.enable_axes[0] > 0.5} onChange={c => setVariables({...variables, enable_axes: [c?1:0, 0]})} />
               <Switch label={t.cartesian} checked={variables.grid_type[0] > 0.5} onChange={c => setVariables({...variables, grid_type: [c?1:0, 0]})} />
               <Switch label={t.polar} checked={variables.polar_grid[0] > 0.5} onChange={c => setVariables({...variables, polar_grid: [c?1:0, 0]})} />
@@ -930,9 +949,9 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
               }} />
 
               {isEditingGLSL && (
-                <div className="flex flex-col gap-1.5 border-t border-zinc-800/40 pt-3">
-                  <span className="text-xs font-semibold text-zinc-400 font-mono">vec2 mapping(vec2 z)</span>
-                  <div className="w-full bg-zinc-900/60 border border-zinc-800/80 rounded-lg text-xs outline-none focus-within:border-emerald-500 custom-scrollbar overflow-hidden">
+                <div className={`flex flex-col gap-1.5 border-t pt-3 ${theme === 'dark' ? 'border-zinc-800/40' : 'border-gray-200/60'}`}>
+                  <span className={`text-xs font-semibold font-mono ${theme === 'dark' ? 'text-zinc-400' : 'text-gray-500'}`}>vec2 mapping(vec2 z)</span>
+                  <div className={`w-full rounded-lg text-xs outline-none focus-within:border-emerald-500 custom-scrollbar overflow-hidden border ${theme === 'dark' ? 'bg-zinc-900/60 border-zinc-800/80' : 'bg-gray-50 border-gray-200'}`}>
                     <Editor
                       value={glslCode}
                       onValueChange={code => setGlslCode(code)}
@@ -942,12 +961,13 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                         fontFamily: '"Fira Code", "JetBrains Mono", monospace',
                         fontSize: 12,
                         backgroundColor: 'transparent',
+                        color: theme === 'dark' ? '#34d399' : '#059669', // raw text fallback
                         minHeight: '180px'
                       }}
                       className="custom-scrollbar"
                     />
                   </div>
-                  <p className="text-[10px] text-zinc-500 italic">
+                  <p className={`text-[10px] italic ${theme === 'dark' ? 'text-zinc-500' : 'text-gray-500'}`}>
                     {lang === 'pt' ? "* Altere para escrever loops ou lógicas de fractais customizadas." : "* Modify this to write raw loops or custom fractal logic."}
                   </p>
                 </div>

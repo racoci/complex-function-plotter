@@ -58,7 +58,8 @@ function initializeScene(
 function drawScene(
   gl: WebGLRenderingContextExtended, 
   variables: Record<string, [WebGLUniformLocation | null, any]>, 
-  axis_ctx: CanvasRenderingContext2D
+  axis_ctx: CanvasRenderingContext2D,
+  isDarkTheme: boolean = true
 ): void {
   for (const key of Object.keys(variables)) {
     const [location, value] = variables[key];
@@ -87,12 +88,13 @@ function drawScene(
     scalarVariables[key] = [location, Array.isArray(value) ? value[0] : value];
   }
 
-  drawAxes(axis_ctx, scalarVariables);
+  drawAxes(axis_ctx, scalarVariables, isDarkTheme);
 }
 
 function drawAxes(
   ctx: CanvasRenderingContext2D, 
-  variables: Record<string, [WebGLUniformLocation | null, any]>
+  variables: Record<string, [WebGLUniformLocation | null, any]>,
+  isDarkTheme: boolean
 ): void {
     const dpr = window.devicePixelRatio || 1;
     const [width, height] = [ctx.canvas.width, ctx.canvas.height];
@@ -181,12 +183,12 @@ function drawAxes(
 
         ctx.font = `italic ${20 * dpr}px Computer Modern Serif`;
         const iOffset = alignLeft ? textWidth + dpr : 0;
-        ctx.strokeText('i', x + iOffset, yy);
-        ctx.fillText('i', x + iOffset, yy);
+        ctx.strokeText('√-1', x + iOffset, yy);
+        ctx.fillText('√-1', x + iOffset, yy);
     }
 
-    ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = '#ffffff';
+    ctx.globalAlpha = isDarkTheme ? 0.8 : 0.6;
+    ctx.strokeStyle = isDarkTheme ? '#ffffff' : '#000000';
 
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -232,17 +234,17 @@ function drawAxes(
 
     ctx.font = `${20 * dpr}px Computer Modern Serif`;
     ctx.globalAlpha = 1;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = isDarkTheme ? '#ffffff' : '#000000';
     ctx.lineWidth = 4;
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#444444';
+    ctx.strokeStyle = isDarkTheme ? '#444444' : '#ffffff';
     for (let i = Math.ceil(x_min/labelScale); i < x_max/labelScale; i++) {
         if (i === 0) {continue;}
         xLabel(i * labelScale);
     }
 
     ctx.font = `italic ${20 * dpr}px Computer Modern Serif`;
-    const iWidth = ctx.measureText('i').width;
+    const iWidth = ctx.measureText('√-1').width;
     for (let i = Math.ceil(y_min/labelScale); i < y_max/labelScale; i++) {
         if (i === 0) {continue;}
         yLabel(i * labelScale, iWidth);
