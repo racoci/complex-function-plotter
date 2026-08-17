@@ -257,7 +257,7 @@ function runTests() {
         if (!finalLoopShader) {
             throw new Error("Failed to compile recursive indexed GLSL loop shader!");
         }
-        if (!finalLoopShader.includes("indexed_loop_helper_0") || !finalLoopShader.includes("for (int _i = 1; _i <= 12; _i++)")) {
+        if (!finalLoopShader.includes("indexed_loop_helper_0") || !finalLoopShader.includes("for (int k_idx = 1; k_idx <= 12; k_idx++)")) {
             throw new Error("Generated shader was missing the native GLSL for-loop helper structure!");
         }
         console.log("  ✓ Successfully generated and verified recursive indexed GLSL loop shader under log-cart representation!");
@@ -277,9 +277,9 @@ function runTests() {
         // TEST 13: Unicode Superscripts and Custom LaTeX Operators Check
         // ----------------------------------------------------
         console.log("\n[Test 13] Testing Unicode superscripts and custom LaTeX operators...");
-        const unicodeLaTeX = "w⁶ + w\\pow 3 - c\\sub{k-1}";
+        const unicodeLaTeX = "w⁶ + w\\pow 3 - c\\sub{k-1} + \\pow{w}{4}";
         const processedUnicode = convertMathLiveToAlgebraic(unicodeLaTeX);
-        if (processedUnicode !== "w^6 + w^ 3 - c_{k-1}") {
+        if (processedUnicode !== "w^6 + w^ 3 - c_{k-1} + (w)^(4)") {
             throw new Error(`Failed to process Unicode superscripts or custom operators: "${processedUnicode}"`);
         }
         console.log("  ✓ Successfully converted Unicode superscripts and custom operators! Result: " + processedUnicode);

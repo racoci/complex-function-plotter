@@ -123,9 +123,8 @@ ${vecType} ${helperName}(${envParams}, ${vecType} ${paramName}) {
         const finalHelperCode = `
 ${vecType} ${helperName}(${envParams !== '' ? envParams + ', ' : ''}${vecType} ${paramName}) {
     ${vecType} acc = ${baseCaseGlsl};
-    for (int _i = 1; _i <= ${k}; _i++) {
-        float ${indexParam}_fl = float(_i);
-        ${vecType} ${indexParam} = ${LOG_MODE ? `vec3(${indexParam}_fl, 0.0, 0.0)` : `vec2(${indexParam}_fl, 0.0)`};
+    for (int ${indexParam}_idx = 1; ${indexParam}_idx <= ${k}; ${indexParam}_idx++) {
+        ${vecType} ${indexParam} = ${LOG_MODE ? `vec3(float(${indexParam}_idx), 0.0, 0.0)` : `vec2(float(${indexParam}_idx), 0.0)`};
         acc = ${finalBodyGlsl};
     }
     return acc;

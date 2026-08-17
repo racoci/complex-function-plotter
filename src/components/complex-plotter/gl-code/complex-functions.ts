@@ -934,6 +934,37 @@ function parseRawExpression(expression: string): ASTNode | null {
     }
 }
 
+function resolveHelpersInAST(ast: ASTNode, definitions: Record<string, FunctionDef>, recursiveBaseName: string): ASTNode {
+    if (!Array.isArray(ast)) return ast;
+    const [op, ...args] = ast as [string, ...any[]];
+    
+    if (op === 'call') {
+        const name = args[0] as string;
+        const callArgs = args[1] as ASTNode[];
+        const resolvedCallArgs = callArgs.map(arg => resolveHelpersInAST(arg, definitions, recursiveBaseName));
+        
+        let baseName = name;
+        if (name.includes('_')) {
+            baseName = name.split('_')[0];
+        }
+        
+        if (baseName !== recursiveBaseName && definitions[name]) {
+            const def = definitions[name];
+            const replaced = substituteInAST(def.body, { [def.param]: resolvedCallArgs[0] });
+            return resolveHelpersInAST(replaced, definitions, recursiveBaseName);
+        }
+        if (baseName !== recursiveBaseName && definitions[baseName]) {
+            const def = definitions[baseName];
+            const replaced = substituteInAST(def.body, { [def.param]: resolvedCallArgs[0] });
+            return resolveHelpersInAST(replaced, definitions, recursiveBaseName);
+        }
+        
+        return ['call', name, resolvedCallArgs];
+    }
+    
+    return [op, ...args.map(child => resolveHelpersInAST(child as ASTNode, definitions, recursiveBaseName))];
+}
+
 export function resolveFunctions(
     ast: ASTNode, 
     definitions: Record<string, FunctionDef>, 
@@ -973,7 +1004,8 @@ export function resolveFunctions(
                 // Do not unroll. Leave a special AST node that `compiler.ts` and `to-glsl.ts` can use to build a native GLSL for-loop.
                 // Reconstruct the definition structure.
                 const k = indexVal !== undefined ? indexVal : (indexValues[baseName] !== undefined ? indexValues[baseName] : 0);
-                return ['indexed_loop', baseName, k, def.indexParam, def.param, def.baseCase, def.body, resolvedCallArgs[0]];
+                const resolvedBody = resolveHelpersInAST(def.body, definitions, baseName);
+                return ['indexed_loop', baseName, k, def.indexParam, def.param, def.baseCase, resolvedBody, resolvedCallArgs[0]];
             }
 
             const unrollKey = `${name}(${JSON.stringify(resolvedCallArgs)})`;

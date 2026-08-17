@@ -18,6 +18,137 @@ import 'prismjs/components/prism-c';
 import 'prismjs/components/prism-glsl';
 import 'prismjs/themes/prism-twilight.css';
 
+function scrubTextColor(latex: string): string {
+    let algebraic = latex;
+    let textcolorReplaced = true;
+    while (textcolorReplaced) {
+        textcolorReplaced = false;
+        const colorMatch = algebraic.match(/\\textcolor\{/);
+        if (colorMatch && colorMatch.index !== undefined) {
+            const i = colorMatch.index;
+            const prefix = colorMatch[0];
+            
+            let depth = 0;
+            let colorStart = i + prefix.length;
+            let colorEnd = -1;
+            for (let j = colorStart; j < algebraic.length; j++) {
+                if (algebraic[j] === '{') depth++;
+                else if (algebraic[j] === '}') {
+                    if (depth === 0) { colorEnd = j; break; }
+                    depth--;
+                }
+            }
+            if (colorEnd !== -1) {
+                let contentStart = algebraic.indexOf('{', colorEnd + 1);
+                if (contentStart !== -1) {
+                    contentStart++;
+                    depth = 0;
+                    let contentEnd = -1;
+                    for (let j = contentStart; j < algebraic.length; j++) {
+                        if (algebraic[j] === '{') depth++;
+                        else if (algebraic[j] === '}') {
+                            if (depth === 0) { contentEnd = j; break; }
+                            depth--;
+                        }
+                    }
+                    if (contentEnd !== -1) {
+                        const content = algebraic.substring(contentStart, contentEnd);
+                        algebraic = algebraic.substring(0, i) + content + algebraic.substring(contentEnd + 1);
+                        textcolorReplaced = true;
+                    }
+                }
+            }
+        }
+    }
+    return algebraic;
+}
+
+function colorizeLaTeXFormula(latex: string): string {
+    if (!latex) return "";
+    const clean = scrubTextColor(latex);
+    const parts = clean.split('=');
+    const colorizedParts = parts.map(part => {
+        const trimmed = part.trim();
+        
+        let funcName = "";
+        let subscript = "";
+        let paramName = "";
+        
+        const indexedM = clean.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_(\{?[a-zA-Z_0-9+-]*\}?)\((.*?)\)/i);
+        const standardM = clean.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)/i);
+        
+        if (indexedM) {
+            funcName = indexedM[1];
+            subscript = indexedM[2];
+            paramName = indexedM[3];
+        } else if (standardM) {
+            funcName = standardM[1];
+            paramName = standardM[2];
+        }
+        
+        let colorized = trimmed;
+        const funcColor = '#f97316';
+        const subColor = '#eab308';
+        const paramColor = '#38bdf8';
+        
+        if (paramName && paramName.trim()) {
+            const paramRegex = new RegExp(`\\b${paramName.trim()}\\b`, 'g');
+            colorized = colorized.replace(paramRegex, `\\textcolor{${paramColor}}{${paramName.trim()}}`);
+        }
+        
+        if (subscript && subscript.trim()) {
+            const sub = subscript.trim();
+            const escapedSub = sub.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const subRegex = new RegExp(`_\\{?${escapedSub}\\}?`, 'g');
+            colorized = colorized.replace(subRegex, `\\textcolor{${subColor}}{_{${sub}}}`);
+        }
+        
+        if (funcName && funcName.trim()) {
+            const fName = funcName.trim();
+            const funcRegex = new RegExp(`\\b${fName}(?=\\_|\\(|\\\\textcolor)`, 'g');
+            colorized = colorized.replace(funcRegex, `\\textcolor{${funcColor}}{${fName}}`);
+        }
+        
+        return colorized;
+    });
+    
+    return colorizedParts.join(' = ');
+}
+
+function getCustomCallsInAST(ast: any, definedKeys: Set<string>): Set<string> {
+    const calls = new Set<string>();
+    const complex_functions_keys = [
+        'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh',
+        'exp', 'log', 'log10', 'sqrt', 'square', 'abs', 'arg', 'conj', 'real', 'imag', 'ceil', 'floor',
+        'round', 'sign', 'gamma', 'fact', 'sec', 'csc', 'cot', 'asec', 'acsc', 'acot', 'sech', 'csch',
+        'coth', 'asech', 'acsch', 'acoth'
+    ];
+    function traverse(node: any) {
+        if (!node || !Array.isArray(node)) return;
+        const [op, ...args] = node as [string, ...any[]];
+        if (op === 'call') {
+            const name = args[0] as string;
+            let baseName = name;
+            if (name.includes('_')) {
+                baseName = name.split('_')[0];
+            }
+            if (
+                !['add', 'sub', 'mul', 'div', 'pow', 'square', 'neg', 'reciprocal', 'call', 'variable', 'number', 'constant'].includes(baseName) &&
+                !complex_functions_keys.includes(baseName) &&
+                !definedKeys.has(baseName) &&
+                !definedKeys.has(name)
+            ) {
+                calls.add(baseName);
+            }
+        }
+        for (const arg of args) {
+            traverse(arg);
+        }
+    }
+    traverse(ast);
+    return calls;
+}
+
 export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) {
   const t = lang === 'pt' ? {
     title: 'Gráficos Complexos',
@@ -97,10 +228,21 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
     }
   });
 
-  const [selectedFunction, setSelectedFunction] = useState<string>("f_k");
+  const [selectedFunction, setSelectedFunction] = useState<string>("f");
   const [indexValues, setIndexValues] = useState<Record<string, number>>({
-    "f_k": 1
+    "f_k": 6
   });
+
+  // Left Panel Width and Minimized States
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('plotter_panel_width');
+    return saved ? parseInt(saved, 10) : 420;
+  });
+  const [isMinimized, setIsMinimized] = useState<boolean>(() => {
+    return localStorage.getItem('plotter_panel_minimized') === 'true';
+  });
+  const [isResizing, setIsDraggingResize] = useState<boolean>(false);
+  const [showCopyToast, setShowCopyToast] = useState<boolean>(false);
 
   // Track if the user has unlocked/confirmed their selected k for the indexed function
   const [kConfirmed, setKConfirmed] = useState<boolean>(true);
@@ -163,9 +305,36 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
 
   // Local state for the freeform formulas lines edited via MathLive with beautiful color-coding highlights
   const [formulaLines, setFormulaLines] = useState<string[]>([
+    "\\textcolor{#f97316}{f}(\\textcolor{#38bdf8}{z}) = \\textcolor{#f97316}{f}\\textcolor{#eab308}{_6}(\\textcolor{#38bdf8}{z})",
     "\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k}}(\\textcolor{#38bdf8}{z}) = \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z}) - \\frac{\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z})^6 - \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z}) - 1}{6 \\cdot \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z})^5 - 1}",
     "\\textcolor{#f97316}{f}\\textcolor{#eab308}{_0}(\\textcolor{#38bdf8}{z}) = \\textcolor{#38bdf8}{z}"
   ]);
+
+  const handleSwapRows = (i: number, j: number) => {
+    if (i < 0 || i >= formulaLines.length || j < 0 || j >= formulaLines.length) return;
+    setFormulaLines(prev => {
+      const next = [...prev];
+      const temp = next[i];
+      next[i] = next[j];
+      next[j] = temp;
+      return next;
+    });
+    setTimeout(() => {
+      const field = mathFieldRefs.current[j];
+      if (field) field.focus();
+    }, 50);
+  };
+
+  const handleCopyAllFormulas = () => {
+    const cleanLines = formulaLines.map(line => scrubTextColor(line));
+    const textToCopy = cleanLines.join('\n');
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        setShowCopyToast(true);
+        setTimeout(() => setShowCopyToast(false), 2000);
+      })
+      .catch(err => console.error("Clipboard copy failed: ", err));
+  };
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
 
   // State for the custom GLSL code editor
@@ -174,6 +343,25 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
 
   // Dragging custom variables
   const [activeVar, setActiveVar] = useState<string | null>(null);
+
+  // Monitor left panel pointer resizing
+  useEffect(() => {
+    if (!isResizing) return;
+    const handlePointerMove = (e: PointerEvent) => {
+      const newWidth = Math.max(300, Math.min(650, e.clientX));
+      setPanelWidth(newWidth);
+      localStorage.setItem('plotter_panel_width', newWidth.toString());
+    };
+    const handlePointerUp = () => {
+      setIsDraggingResize(false);
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isResizing]);
 
   // Parse and validate expression
   useEffect(() => {
@@ -637,6 +825,47 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
          const firstKey = Object.keys(newDefs)[0];
          setSelectedFunction(firstKey);
       }
+
+      // Dynamic Auto-scaffolding of missing custom helper functions
+      const definedKeys = new Set<string>();
+      formulaLines.forEach(line => {
+         const algebraic = convertMathLiveToAlgebraic(line);
+         const parts = algebraic.split('=');
+         if (parts.length > 0) {
+            const lhs = parts[0].trim();
+            const indexedM = lhs.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_0-9+-]*)\}?\(/i);
+            const standardM = lhs.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\(/);
+            if (indexedM) definedKeys.add(indexedM[1]);
+            else if (standardM) definedKeys.add(standardM[1]);
+         }
+      });
+
+      const missingHelpers = new Set<string>();
+      Object.entries(newDefs).forEach(([key, def]) => {
+         const localDefined = new Set(definedKeys);
+         if (def.isIndexed && def.indexParam) {
+            localDefined.add(def.indexParam);
+         }
+         const astCalls = getCustomCallsInAST(def.body, localDefined);
+         astCalls.forEach(c => missingHelpers.add(c));
+      });
+
+      if (missingHelpers.size > 0) {
+         setFormulaLines(prev => {
+            const next = [...prev];
+            missingHelpers.forEach(name => {
+               const cleanName = name.trim();
+               const alreadyExists = next.some(l => {
+                  const lClean = scrubTextColor(l).trim();
+                  return lClean.startsWith(`${cleanName}(`) || lClean.startsWith(`${cleanName}_`);
+               });
+               if (!alreadyExists) {
+                  next.push(`\\textcolor{#f97316}{${cleanName}}(\\textcolor{#38bdf8}{z}) = \\textcolor{#38bdf8}{z}`);
+               }
+            });
+            return next;
+         });
+      }
     }
   }, [formulaLines, lang]);
 
@@ -672,188 +901,263 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
         })}
       </div>
 
-      {/* Unified Left Control Panel */}
-      <div className="absolute top-4 left-4 flex flex-col gap-3 pointer-events-none max-w-md w-full z-40">
-         <div className={`${theme === 'dark' ? 'bg-zinc-950/40 border-zinc-800/60 text-zinc-100' : 'bg-white/70 border-gray-200/60 text-gray-900'} backdrop-blur-md border p-5 rounded-2xl shadow-2xl pointer-events-auto transition-colors flex flex-col gap-4`}>
-            <div>
-               <h2 className="text-xl font-bold mb-1">{t.title}</h2>
-               <p className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-gray-500'}`}>{t.desc}</p>
-            </div>
+      {/* Resizable, Minimizable Left Control Panel */}
+      {isMinimized ? (
+         <button
+           onClick={() => {
+             setIsMinimized(false);
+             localStorage.setItem('plotter_panel_minimized', 'false');
+           }}
+           className={`absolute top-4 left-4 ${theme === 'dark' ? 'bg-zinc-950/40 border-zinc-800/60 hover:bg-zinc-900/60 text-zinc-100' : 'bg-white/70 border-gray-200/60 hover:bg-white/90 text-gray-800'} backdrop-blur-md border h-12 w-12 rounded-full pointer-events-auto transition-all shadow-lg flex items-center justify-center cursor-pointer font-bold text-lg select-none z-40`}
+           title={lang === 'pt' ? 'Expandir Fórmulas' : 'Expand Formulas'}
+         >
+           ƒ
+         </button>
+      ) : (
+         <div 
+           style={{ width: `${panelWidth}px` }}
+           className="absolute top-4 left-4 flex flex-col gap-3 pointer-events-none z-40 transition-all"
+         >
+            <div className={`relative ${theme === 'dark' ? 'bg-zinc-950/40 border-zinc-800/60 text-zinc-100' : 'bg-white/70 border-gray-200/60 text-gray-900'} backdrop-blur-md border p-5 rounded-2xl shadow-2xl pointer-events-auto flex flex-col gap-4 select-none`}>
+               {/* Resizing Edge handle */}
+               <div 
+                 onPointerDown={() => setIsDraggingResize(true)}
+                 className="absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-zinc-500/20 active:bg-zinc-500/40 z-50 rounded-r"
+               />
 
-            {/* Dynamic k selection value (Freeform Number Input) */}
-            {functionDefs[selectedFunction]?.isIndexed && (
-               <div className={`flex items-center justify-between p-3 rounded-xl border ${theme === 'dark' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
-                  <span className={`text-xs font-bold ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                     {lang === 'pt' ? 'Índice de Iteração (k):' : 'Iteration Index (k):'}
-                  </span>
-                  <div className="flex items-center gap-2">
-                     <input
-                        type="number"
-                        min="0"
-                        value={indexValues[selectedFunction] ?? 1}
-                        onChange={e => {
-                           const val = parseInt(e.target.value, 10);
-                           if (!isNaN(val) && val >= 0) {
-                              setIndexValues(prev => ({ ...prev, [selectedFunction]: val }));
-                           }
-                        }}
-                        className={`w-16 h-8 text-center font-mono font-bold rounded-lg border text-sm outline-none focus:border-emerald-500 ${theme === 'dark' ? 'bg-zinc-900/60 border-zinc-800 text-emerald-400' : 'bg-gray-50 border-gray-300 text-emerald-600'}`}
-                     />
-                  </div>
+               {/* Header Controls */}
+               <div className="flex justify-between items-start gap-4 pr-1">
+                 <div>
+                    <h2 className="text-xl font-bold mb-1">{t.title}</h2>
+                    <p className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-gray-500'}`}>{t.desc}</p>
+                 </div>
+                 <div className="flex gap-1.5 mt-0.5">
+                    {/* Copy Button */}
+                    <button
+                      onClick={handleCopyAllFormulas}
+                      className={`p-2 h-9 w-9 rounded-lg border text-sm flex items-center justify-center cursor-pointer transition-colors relative ${theme === 'dark' ? 'border-zinc-800 bg-zinc-900/30 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40' : 'border-gray-300 bg-gray-100/50 text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                      title={lang === 'pt' ? 'Copiar Todas as Fórmulas' : 'Copy All Formulas'}
+                    >
+                      📋
+                      {showCopyToast && (
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-emerald-500 text-black font-extrabold text-[10px] px-2 py-0.5 rounded shadow shadow-emerald-500/20 whitespace-nowrap animate-bounce">
+                          {lang === 'pt' ? 'Copiado!' : 'Copied!'}
+                        </span>
+                      )}
+                    </button>
+                    {/* Minimize Button */}
+                    <button
+                      onClick={() => {
+                        setIsMinimized(true);
+                        localStorage.setItem('plotter_panel_minimized', 'true');
+                      }}
+                      className={`p-2 h-9 w-9 rounded-lg border text-sm flex items-center justify-center cursor-pointer transition-colors ${theme === 'dark' ? 'border-zinc-800 bg-zinc-900/30 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40' : 'border-gray-300 bg-gray-100/50 text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                      title={lang === 'pt' ? 'Minimizar Painel' : 'Minimize Panel'}
+                    >
+                      ↙️
+                    </button>
+                 </div>
                </div>
-            )}
 
-            {/* Large-size MathLive formula lines list */}
-            <div className="flex flex-col gap-3 max-h-96 overflow-y-auto custom-scrollbar">
-                <div className="flex flex-col gap-2">
-                  {formulaLines.map((line, index) => {
-                    const trimmedLine = line.trim();
-                    let key = "";
-                    let isBase = false;
-                    
-                    const indexedM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_])\}?\(/i);
-                    const baseCaseM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([0-9]+)\}?\(/i);
-                    const standardM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\(/);
+               {/* Large-size MathLive formula lines list */}
+               <div className="flex flex-col gap-3 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+                   <div className="flex flex-col gap-2">
+                     {formulaLines.map((line, index) => {
+                       const trimmedLine = line.trim();
+                       let key = "";
+                       let isBase = false;
+                       
+                       const indexedM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_0-9+-]*)\}?\(/i);
+                       const baseCaseM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([0-9]+)\}?\(/i);
+                       const standardM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\(/);
 
-                    if (indexedM) {
-                      key = `${indexedM[1]}_${indexedM[2]}`;
-                    } else if (baseCaseM) {
-                      isBase = true;
-                    } else if (standardM) {
-                      key = standardM[1];
-                    }
+                       if (indexedM) {
+                         key = `${indexedM[1]}_${indexedM[2]}`;
+                       } else if (baseCaseM) {
+                         isBase = true;
+                       } else if (standardM) {
+                         key = standardM[1];
+                       }
 
-                    return (
-                      <div key={index} className="flex gap-2.5 items-center w-full group">
-                        {/* Selector Eye button */}
-                        {key && !isBase && (
-                           <button
-                             onClick={() => {
-                               setSelectedFunction(key);
-                             }}
-                             className={`p-2 h-11 w-11 rounded-xl border flex items-center justify-center cursor-pointer transition-all ${
-                                selectedFunction === key 
-                                  ? (theme === 'dark' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)] font-bold' : 'border-emerald-600 bg-emerald-500/20 text-emerald-600 shadow-[0_0_10px_rgba(5,150,105,0.2)] font-bold') 
-                                  : (theme === 'dark' ? 'border-zinc-800/80 bg-zinc-900/30 text-zinc-500 hover:text-zinc-300' : 'border-gray-300 bg-gray-100/50 text-gray-500 hover:text-gray-800')
-                             }`}
-                             title={lang === 'pt' ? `Visualizar esta função (${key})` : `Visualize this function (${key})`}
-                           >
-                             👁️
-                           </button>
-                        )}
-                        {isBase && (
-                           <div className={`w-11 h-11 flex items-center justify-center text-sm font-mono ${theme === 'dark' ? 'text-zinc-600' : 'text-gray-400'}`}>
-                             ↳
+                       // Check if the current line matches the active function key
+                       const isSelected = selectedFunction === key || (selectedFunction === "f_k" && key.startsWith("f_"));
+
+                       return (
+                         <div key={index} className="flex gap-2.5 items-center w-full group">
+                           {/* Selector Eye button */}
+                           {key && !isBase && (
+                              <button
+                                onClick={() => {
+                                  setSelectedFunction(key);
+                                }}
+                                className={`p-2 h-11 w-11 rounded-xl border flex items-center justify-center cursor-pointer transition-all ${
+                                   isSelected 
+                                     ? (theme === 'dark' ? 'border-zinc-100 bg-zinc-800/60 text-zinc-100 shadow-[0_0_15px_rgba(255,255,255,0.15)] font-bold' : 'border-gray-900 bg-gray-200/80 text-gray-900 shadow-[0_0_12px_rgba(0,0,0,0.12)] font-bold') 
+                                     : (theme === 'dark' ? 'border-zinc-800/80 bg-zinc-900/30 text-zinc-500 hover:text-zinc-300' : 'border-gray-300 bg-gray-100/50 text-gray-500 hover:text-gray-800')
+                                }`}
+                                title={lang === 'pt' ? `Visualizar esta função (${key})` : `Visualize this function (${key})`}
+                              >
+                                👁️
+                              </button>
+                           )}
+                           {isBase && (
+                              <div className={`w-11 h-11 flex items-center justify-center text-sm font-mono ${theme === 'dark' ? 'text-zinc-600' : 'text-gray-400'}`}>
+                                ↳
+                              </div>
+                           )}
+
+                           {React.createElement('math-field', {
+                             ref: (el: any) => {
+                               mathFieldRefs.current[index] = el;
+                             },
+                             value: line,
+                             onChange: (e: any) => {
+                               const newValue = e.target.value;
+                               setFormulaLines(prev => {
+                                 const next = [...prev];
+                                 next[index] = newValue;
+                                 return next;
+                               });
+                             },
+                             onBlur: (e: any) => {
+                               const newValue = e.target.value;
+                               const colorizedValue = colorizeLaTeXFormula(newValue);
+                               if (colorizedValue !== newValue) {
+                                 setFormulaLines(prev => {
+                                   const next = [...prev];
+                                   next[index] = colorizedValue;
+                                   return next;
+                                 });
+                               }
+                             },
+                             onKeyDown: (e: any) => {
+                               if (e.key === 'ArrowUp' && e.ctrlKey && e.shiftKey) {
+                                 e.preventDefault();
+                                 handleSwapRows(index, index - 1);
+                               } else if (e.key === 'ArrowDown' && e.ctrlKey && e.shiftKey) {
+                                 e.preventDefault();
+                                 handleSwapRows(index, index + 1);
+                               } else if (e.key === 'Enter') {
+                                 e.preventDefault();
+                                 setFormulaLines(prev => {
+                                   const next = [...prev];
+                                   next.splice(index + 1, 0, "");
+                                   return next;
+                                 });
+                                 setTimeout(() => {
+                                   const nextField = mathFieldRefs.current[index + 1];
+                                   if (nextField) nextField.focus();
+                                 }, 50);
+                               } else if (e.key === 'Backspace' && e.target.value === "") {
+                                 e.preventDefault();
+                                 if (formulaLines.length > 1) {
+                                   setFormulaLines(prev => prev.filter((_, i) => i !== index));
+                                   setTimeout(() => {
+                                     const prevField = mathFieldRefs.current[index - 1];
+                                     if (prevField) prevField.focus();
+                                   }, 50);
+                                 }
+                               } else if (e.key === 'ArrowUp') {
+                                 const prevField = mathFieldRefs.current[index - 1];
+                                 if (prevField) prevField.focus();
+                               } else if (e.key === 'ArrowDown') {
+                                 const nextField = mathFieldRefs.current[index + 1];
+                                 if (nextField) nextField.focus();
+                               }
+                             },
+                             style: {
+                               flex: '1',
+                               padding: '10px 12px',
+                               backgroundColor: theme === 'dark' 
+                                 ? (isSelected ? 'rgba(255, 255, 255, 0.03)' : 'rgba(24, 24, 27, 0.6)') 
+                                 : (isSelected ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.6)'),
+                               color: theme === 'dark' ? '#e4e4e7' : '#111827',
+                               borderRadius: '0.5rem',
+                               border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
+                                 ? '1.5px solid #ef4444' 
+                                 : (isSelected
+                                     ? (theme === 'dark' ? '1.5px solid #e4e4e7' : '1.5px solid #111827')
+                                     : (theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(209, 213, 219, 0.8)')),
+                               boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
+                                 ? '0 0 10px rgba(239, 68, 68, 0.3)'
+                                 : (isSelected
+                                     ? (theme === 'dark' ? '0 0 15px rgba(255, 255, 255, 0.1)' : '0 0 12px rgba(0, 0, 0, 0.08)')
+                                     : 'none'),
+                               outline: 'none',
+                               fontSize: '15px'
+                             }
+                           })}
+
+                           {/* Hover Sort Arrows */}
+                           <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                             {index > 0 && (
+                               <button
+                                 onClick={() => handleSwapRows(index, index - 1)}
+                                 className={`p-0.5 text-[10px] leading-none rounded hover:bg-zinc-800/40 text-zinc-500 hover:text-zinc-300 cursor-pointer`}
+                                 title={lang === 'pt' ? 'Mover para cima' : 'Move up'}
+                               >
+                                 ▲
+                               </button>
+                             )}
+                             {index < formulaLines.length - 1 && (
+                               <button
+                                 onClick={() => handleSwapRows(index, index + 1)}
+                                 className={`p-0.5 text-[10px] leading-none rounded hover:bg-zinc-800/40 text-zinc-500 hover:text-zinc-300 cursor-pointer`}
+                                 title={lang === 'pt' ? 'Mover para baixo' : 'Move down'}
+                               >
+                                 ▼
+                               </button>
+                             )}
                            </div>
-                        )}
+                           
+                           {formulaLines.length > 1 && (
+                             <button 
+                               onClick={() => {
+                                 setFormulaLines(prev => prev.filter((_, i) => i !== index));
+                               }}
+                               className="text-red-500/60 hover:text-red-500 p-2 cursor-pointer text-xs font-mono transition-colors opacity-0 group-hover:opacity-100"
+                               title={lang === 'pt' ? 'Excluir linha' : 'Delete line'}
+                             >
+                               ✕
+                             </button>
+                           )}
+                         </div>
+                       );
+                     })}
+                   </div>
+                 </div>
 
-                        {React.createElement('math-field', {
-                          ref: (el: any) => {
-                            mathFieldRefs.current[index] = el;
-                          },
-                          value: line,
-                          onChange: (e: any) => {
-                            const newValue = e.target.value;
-                            setFormulaLines(prev => {
-                              const next = [...prev];
-                              next[index] = newValue;
-                              return next;
-                            });
-                          },
-                          onKeyDown: (e: any) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              setFormulaLines(prev => {
-                                const next = [...prev];
-                                next.splice(index + 1, 0, "");
-                                return next;
-                              });
-                              setTimeout(() => {
-                                const nextField = mathFieldRefs.current[index + 1];
-                                if (nextField) nextField.focus();
-                              }, 50);
-                            } else if (e.key === 'Backspace' && e.target.value === "") {
-                              e.preventDefault();
-                              if (formulaLines.length > 1) {
-                                setFormulaLines(prev => prev.filter((_, i) => i !== index));
-                                setTimeout(() => {
-                                  const prevField = mathFieldRefs.current[index - 1];
-                                  if (prevField) prevField.focus();
-                                }, 50);
-                              }
-                            } else if (e.key === 'ArrowUp') {
-                              const prevField = mathFieldRefs.current[index - 1];
-                              if (prevField) prevField.focus();
-                            } else if (e.key === 'ArrowDown') {
-                              const nextField = mathFieldRefs.current[index + 1];
-                              if (nextField) nextField.focus();
-                            }
-                          },
-                          style: {
-                            flex: '1',
-                            padding: '10px 12px',
-                            backgroundColor: theme === 'dark' 
-                              ? (selectedFunction === key && key !== "" ? 'rgba(16, 185, 129, 0.05)' : 'rgba(24, 24, 27, 0.6)') 
-                              : (selectedFunction === key && key !== "" ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.6)'),
-                            color: theme === 'dark' ? '#6ee7b7' : '#059669',
-                            borderRadius: '0.5rem',
-                            border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
-                              ? '1.5px solid #ef4444' 
-                              : (selectedFunction === key && key !== ""
-                                  ? (theme === 'dark' ? '1.5px solid #10b981' : '1.5px solid #059669')
-                                  : (theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(209, 213, 219, 0.8)')),
-                            boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
-                              ? '0 0 10px rgba(239, 68, 68, 0.3)'
-                              : (selectedFunction === key && key !== ""
-                                  ? (theme === 'dark' ? '0 0 15px rgba(16, 185, 129, 0.25)' : '0 0 12px rgba(5, 150, 105, 0.15)')
-                                  : 'none'),
-                            outline: 'none',
-                            fontSize: '15px'
-                          }
-                        })}
-                        
-                        {formulaLines.length > 1 && (
-                          <button 
-                            onClick={() => {
-                              setFormulaLines(prev => prev.filter((_, i) => i !== index));
-                            }}
-                            className="text-red-500/60 hover:text-red-500 p-2 cursor-pointer text-xs font-mono transition-colors opacity-0 group-hover:opacity-100"
-                            title={lang === 'pt' ? 'Excluir linha' : 'Delete line'}
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                 <button
+                     onClick={() => {
+                       setFormulaLines(prev => [...prev, ""]);
+                       setTimeout(() => {
+                         const nextField = mathFieldRefs.current[formulaLines.length];
+                         if (nextField) nextField.focus();
+                       }, 50);
+                     }}
+                     className={`border border-dashed py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all mt-1 ${theme === 'dark' ? 'border-zinc-800 hover:border-zinc-500 text-zinc-400 hover:text-zinc-100' : 'border-gray-300 hover:border-gray-500 text-gray-500 hover:text-gray-900'}`}
+                   >
+                     + {lang === 'pt' ? "Adicionar Fórmula (Enter)" : "Add Formula (Enter)"}
+                   </button>
 
-              <button
-                  onClick={() => {
-                    setFormulaLines(prev => [...prev, ""]);
-                    setTimeout(() => {
-                      const nextField = mathFieldRefs.current[formulaLines.length];
-                      if (nextField) nextField.focus();
-                    }, 50);
-                  }}
-                  className={`border border-dashed py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all mt-1 ${theme === 'dark' ? 'border-zinc-800 hover:border-emerald-500/50 text-zinc-400 hover:text-emerald-400' : 'border-gray-300 hover:border-emerald-500 text-gray-500 hover:text-emerald-600'}`}
-                >
-                  + {lang === 'pt' ? "Adicionar Linha (Enter)" : "Add Line (Enter)"}
-                </button>
-
-                {editorErrors.length > 0 && (
-                  <div className={`flex flex-col gap-1.5 border p-3 rounded-xl text-[11px] font-mono custom-scrollbar max-h-32 overflow-y-auto ${theme === 'dark' ? 'bg-red-950/20 border-red-900/40 text-red-400' : 'bg-red-50 border-red-200 text-red-600'}`}>
-                    {editorErrors.map((err, i) => (
-                      <div key={i} className="flex gap-1.5 items-start">
-                        <span className="text-red-500">✕</span>
-                        <span>{err}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                   {editorErrors.length > 0 && (
+                     <div className={`flex flex-col gap-1.5 border p-3 rounded-xl text-[11px] font-mono custom-scrollbar max-h-32 overflow-y-auto ${theme === 'dark' ? 'bg-red-950/25 border-red-900/50 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                       {editorErrors.map((err, i) => (
+                         <details key={i} className="flex flex-col gap-1 cursor-pointer">
+                            <summary className="font-bold select-none flex gap-1 items-center hover:text-red-400">
+                               <span>✕</span>
+                               <span>{err.split(':')[0]}</span>
+                            </summary>
+                            <div className="pl-4 pt-1 mt-0.5 border-l border-red-500/20 text-[10px] text-red-400/80 whitespace-pre-wrap select-text selection:bg-red-500/20">
+                               {err}
+                            </div>
+                         </details>
+                       ))}
+                     </div>
+                   )}
+            </div>
          </div>
-      </div>
+      )}
 
       {/* Floating Right Control Panel: Display Options Button & Box */}
       <div className="absolute top-4 right-4 flex flex-col gap-2 z-40 items-end">

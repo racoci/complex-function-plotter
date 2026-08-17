@@ -7,10 +7,6 @@ export function convertMathLiveToAlgebraic(latex: string): string {
     
     let algebraic = latex;
 
-    // Replace custom user operators \pow with ^ and \sub with _
-    algebraic = algebraic.replace(/\\pow/g, '^');
-    algebraic = algebraic.replace(/\\sub/g, '_');
-
     // Replace unicode superscripts (e.g. ⁶) with standard caret notation (e.g. ^6)
     const superscripts: Record<string, string> = {
         '⁰': '^0', '¹': '^1', '²': '^2', '³': '^3', '⁴': '^4',
@@ -74,6 +70,53 @@ export function convertMathLiveToAlgebraic(latex: string): string {
     algebraic = algebraic.replace(/\\!/g, '');
     algebraic = algebraic.replace(/\\mleft/g, '');
     algebraic = algebraic.replace(/\\mright/g, '');
+
+    // 1B. Functional power support: \pow{base}{exponent} -> (base)^(exponent) using balanced braces matching
+    let powReplaced = true;
+    while (powReplaced) {
+        powReplaced = false;
+        const powMatch = algebraic.match(/\\pow\{/);
+        if (powMatch && powMatch.index !== undefined) {
+            const i = powMatch.index;
+            const prefix = powMatch[0];
+            
+            let depth = 0;
+            let numStart = i + prefix.length;
+            let numEnd = -1;
+            for (let j = numStart; j < algebraic.length; j++) {
+                if (algebraic[j] === '{') depth++;
+                else if (algebraic[j] === '}') {
+                    if (depth === 0) { numEnd = j; break; }
+                    depth--;
+                }
+            }
+            if (numEnd !== -1) {
+                let denStart = algebraic.indexOf('{', numEnd + 1);
+                if (denStart !== -1) {
+                    denStart++;
+                    depth = 0;
+                    let denEnd = -1;
+                    for (let j = denStart; j < algebraic.length; j++) {
+                        if (algebraic[j] === '{') depth++;
+                        else if (algebraic[j] === '}') {
+                            if (depth === 0) { denEnd = j; break; }
+                            depth--;
+                        }
+                    }
+                    if (denEnd !== -1) {
+                        const base = algebraic.substring(numStart, numEnd);
+                        const exponent = algebraic.substring(denStart, denEnd);
+                        algebraic = algebraic.substring(0, i) + `(${base})^(${exponent})` + algebraic.substring(denEnd + 1);
+                        powReplaced = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Replace remaining infix custom user operators \pow with ^ and \sub with _
+    algebraic = algebraic.replace(/\\pow/g, '^');
+    algebraic = algebraic.replace(/\\sub/g, '_');
 
     // 2. Fractions: \frac{a}{b}, \cfrac{a}{b}, \dfrac{a}{b} -> (a)/(b)
     // We must handle nested fractions and braces, so a balanced parenthesis extractor is used.
