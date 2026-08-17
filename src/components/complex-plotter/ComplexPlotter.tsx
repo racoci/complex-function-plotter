@@ -163,9 +163,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
 
   // Local state for the freeform formulas lines edited via MathLive
   const [formulaLines, setFormulaLines] = useState<string[]>([
-    "f(z) = z^2 + c",
-    "g(z) = \\sin(z) \\cdot c_1",
-    "f_k(z) = f_{k-1}(z) - (f_{k-1}(z)^6 - f_{k-1}(z) - 1) / (6 \\cdot f_{k-1}(z)^5 - 1)",
+    "f_k(z) = f_{k-1}(z) - \\frac{f_{k-1}(z)^6 - f_{k-1}(z) - 1}{6 \\cdot f_{k-1}(z)^5 - 1}",
     "f_0(z) = z"
   ]);
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
@@ -227,10 +225,42 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
 
         // Generate and sync GLSL code if not in custom editing mode
         if (!isEditingGLSL) {
-          const compiled = compileGLSL(ast, false); // Cartesian mode
-          if (compiled) {
-            const mappingFn = `vec2 mapping(vec2 z) {\n  return ${compiled.expression};\n}`;
-            setGlslCode(mappingFn);
+          if (Array.isArray(ast) && ast[0] === 'indexed_loop') {
+            const [baseName, k, indexParam, paramName, baseCaseAst, bodyAst, initArgAst] = ast.slice(1);
+            
+            // Compile base case
+            const baseCaseCompiled = compileGLSL(baseCaseAst, false);
+            const baseCaseGlsl = baseCaseCompiled ? baseCaseCompiled.expression : 'z';
+            
+            // Helper to replace recursive f_{k-1} with acc
+            const replaceRecursiveCall = (astNode: any): any => {
+              if (!Array.isArray(astNode)) return astNode;
+              const [op, ...nodeArgs] = astNode;
+              if (op === 'call' && (nodeArgs[0] as string).startsWith(baseName)) {
+                return ['variable', 'acc'];
+              }
+              return [op, ...nodeArgs.map(replaceRecursiveCall)];
+            };
+            const modifiedBody = replaceRecursiveCall(bodyAst);
+            const bodyCompiled = compileGLSL(modifiedBody, false);
+            const bodyGlsl = bodyCompiled ? bodyCompiled.expression : 'acc';
+
+            const loopGlsl = `vec2 mapping(vec2 z) {
+  vec2 acc = ${baseCaseGlsl};
+  for (int _i = 1; _i <= ${k}; _i++) {
+    float ${indexParam}_fl = float(_i);
+    vec2 ${indexParam} = vec2(${indexParam}_fl, 0.0);
+    acc = ${bodyGlsl};
+  }
+  return acc;
+}`;
+            setGlslCode(loopGlsl);
+          } else {
+            const compiled = compileGLSL(ast, false); // Cartesian mode
+            if (compiled) {
+              const mappingFn = `vec2 mapping(vec2 z) {\n  return ${compiled.expression};\n}`;
+              setGlslCode(mappingFn);
+            }
           }
         }
         
