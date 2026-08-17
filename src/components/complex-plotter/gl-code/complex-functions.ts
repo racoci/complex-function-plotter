@@ -1177,6 +1177,7 @@ function functionDefinitions(ast: ASTNode | string, LOG_MODE: boolean): string {
         const f = stack.pop();
         if (!f) continue;
         const fObj = complex_functions[f];
+        if (!fObj) continue;
         const dependencies = LOG_MODE ? fObj.log_dependencies : fObj.dependencies;
         for (let dep of dependencies) {
             if (!required.has(dep)) {
@@ -1191,7 +1192,9 @@ function functionDefinitions(ast: ASTNode | string, LOG_MODE: boolean): string {
     const VEC_TYPE = LOG_MODE ? 'vec3' : 'vec2';
     const comp_suffix = LOG_MODE ? 'xyz' : 'xy';
 
-    const functions = Array.from(required).map(name => complex_functions[name]);
+    const functions = Array.from(required)
+        .map(name => complex_functions[name])
+        .filter(f => f !== undefined);
     const declarations = functions.map(f => f.declaration.replaceAll('VEC_TYPE', VEC_TYPE));
     const definitions = functions.map(
         f => ((LOG_MODE ? f.log_code : f.code) as string).replaceAll('VEC_TYPE', VEC_TYPE).replaceAll('COMPONENTS', comp_suffix)
