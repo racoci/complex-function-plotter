@@ -6,6 +6,48 @@ export function convertMathLiveToAlgebraic(latex: string): string {
     if (!latex) return "";
     
     let algebraic = latex;
+
+    // 0. Remove \textcolor{color}{content} -> content using balanced braces matching
+    let textcolorReplaced = true;
+    while (textcolorReplaced) {
+        textcolorReplaced = false;
+        const colorMatch = algebraic.match(/\\textcolor\{/);
+        if (colorMatch && colorMatch.index !== undefined) {
+            const i = colorMatch.index;
+            const prefix = colorMatch[0];
+            
+            let depth = 0;
+            let colorStart = i + prefix.length;
+            let colorEnd = -1;
+            for (let j = colorStart; j < algebraic.length; j++) {
+                if (algebraic[j] === '{') depth++;
+                else if (algebraic[j] === '}') {
+                    if (depth === 0) { colorEnd = j; break; }
+                    depth--;
+                }
+            }
+            if (colorEnd !== -1) {
+                let contentStart = algebraic.indexOf('{', colorEnd + 1);
+                if (contentStart !== -1) {
+                    contentStart++;
+                    depth = 0;
+                    let contentEnd = -1;
+                    for (let j = contentStart; j < algebraic.length; j++) {
+                        if (algebraic[j] === '{') depth++;
+                        else if (algebraic[j] === '}') {
+                            if (depth === 0) { contentEnd = j; break; }
+                            depth--;
+                        }
+                    }
+                    if (contentEnd !== -1) {
+                        const content = algebraic.substring(contentStart, contentEnd);
+                        algebraic = algebraic.substring(0, i) + content + algebraic.substring(contentEnd + 1);
+                        textcolorReplaced = true;
+                    }
+                }
+            }
+        }
+    }
     
     // 1. Clean up spacing and arbitrary MathLive formatting artifacts
     algebraic = algebraic.replace(/\\left\./g, '');

@@ -161,10 +161,10 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
     }));
   }, [theme]);
 
-  // Local state for the freeform formulas lines edited via MathLive
+  // Local state for the freeform formulas lines edited via MathLive with beautiful color-coding highlights
   const [formulaLines, setFormulaLines] = useState<string[]>([
-    "f_k(z) = f_{k-1}(z) - \\frac{f_{k-1}(z)^6 - f_{k-1}(z) - 1}{6 \\cdot f_{k-1}(z)^5 - 1}",
-    "f_0(z) = z"
+    "\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k}}(\\textcolor{#38bdf8}{z}) = \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z}) - \\frac{\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z})^6 - \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z}) - 1}{6 \\cdot \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z})^5 - 1}",
+    "\\textcolor{#f97316}{f}\\textcolor{#eab308}{_0}(\\textcolor{#38bdf8}{z}) = \\textcolor{#38bdf8}{z}"
   ]);
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
 
@@ -792,15 +792,21 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                           style: {
                             flex: '1',
                             padding: '10px 12px',
-                            backgroundColor: theme === 'dark' ? 'rgba(24, 24, 27, 0.6)' : 'rgba(255, 255, 255, 0.6)',
+                            backgroundColor: theme === 'dark' 
+                              ? (selectedFunction === key && key !== "" ? 'rgba(16, 185, 129, 0.05)' : 'rgba(24, 24, 27, 0.6)') 
+                              : (selectedFunction === key && key !== "" ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.6)'),
                             color: theme === 'dark' ? '#6ee7b7' : '#059669',
                             borderRadius: '0.5rem',
                             border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
                               ? '1.5px solid #ef4444' 
-                              : (theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(209, 213, 219, 0.8)'),
+                              : (selectedFunction === key && key !== ""
+                                  ? (theme === 'dark' ? '1.5px solid #10b981' : '1.5px solid #059669')
+                                  : (theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(209, 213, 219, 0.8)')),
                             boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
                               ? '0 0 10px rgba(239, 68, 68, 0.3)'
-                              : 'none',
+                              : (selectedFunction === key && key !== ""
+                                  ? (theme === 'dark' ? '0 0 15px rgba(16, 185, 129, 0.25)' : '0 0 12px rgba(5, 150, 105, 0.15)')
+                                  : 'none'),
                             outline: 'none',
                             fontSize: '15px'
                           }

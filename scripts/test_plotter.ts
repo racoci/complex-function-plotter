@@ -4,6 +4,7 @@ import { FunctionDef } from '../src/components/complex-plotter/gl-code/types';
 import toJS from '../src/components/complex-plotter/gl-code/translators/to-js';
 import { compileGLSL } from '../src/components/complex-plotter/gl-code/translators/to-glsl';
 import { getFragmentShaderSource } from '../src/components/complex-plotter/gl-code/shaders';
+import { convertMathLiveToAlgebraic } from '../src/components/complex-plotter/gl-code/translators/mathlive-converter';
 
 function runTests() {
     console.log("=== RUNNING COMPLEX FUNCTION PLOTTER RECURSIVE & SUBSCRIPT ENHANCEMENT TESTS ===");
@@ -260,6 +261,17 @@ function runTests() {
             throw new Error("Generated shader was missing the native GLSL for-loop helper structure!");
         }
         console.log("  ✓ Successfully generated and verified recursive indexed GLSL loop shader under log-cart representation!");
+
+        // ----------------------------------------------------
+        // TEST 12: Color Tag (\textcolor) Ignoring Check
+        // ----------------------------------------------------
+        console.log("\n[Test 12] Testing LaTeX color tags scrubbing...");
+        const coloredLaTeX = "\\textcolor{yellow}{_{k}}(z)=f\\textcolor{yellow}{_{k-1}}(z)-\\frac{f\\textcolor{yellow}{_{k-1}}(z)^6-f\\textcolor{yellow}{_{k-1}}(z)-1}{6\\cdot f\\textcolor{yellow}{_{k-1}}(z)^5-1}";
+        const scrubbedAlgebraic = convertMathLiveToAlgebraic(coloredLaTeX);
+        if (scrubbedAlgebraic.includes("textcolor") || scrubbedAlgebraic.includes("yellow")) {
+            throw new Error(`Failed to scrub color tags: "${scrubbedAlgebraic}"`);
+        }
+        console.log("  ✓ Successfully scrubbed color tags! Result: " + scrubbedAlgebraic);
 
         console.log("\n🎉 ALL RECURSIVE & SUBSCRIPT ENHANCEMENT TESTS PASSED SUCCESSFULLY! 🎉\n");
     } catch (err) {
