@@ -72,8 +72,9 @@ function toGLSL(ast: ASTNode, LOG_MODE: boolean, env: string[] = ['z']): [string
         const helperName = `indexed_loop_helper_${helperCount++}`;
         const vecType = LOG_MODE ? 'vec3' : 'vec2';
         
-        const envParams = env.map(v => `${vecType} ${v}`).join(', ');
-        const envArgs = env.join(', ');
+        const filteredEnv = env.filter(v => v !== paramName);
+        const envParams = filteredEnv.map(v => `${vecType} ${v}`).join(', ');
+        const envArgs = filteredEnv.join(', ');
         
         // Compile base case replacing param with z
         const baseCaseGlsl = toGLSL(baseCaseAst, LOG_MODE, [...env, paramName])[0];
@@ -120,7 +121,7 @@ ${vecType} ${helperName}(${envParams}, ${vecType} ${paramName}) {
         const finalBodyGlsl = toGLSL(modifiedBodyAst, LOG_MODE, [...env, paramName, indexParam, 'acc'])[0];
 
         const finalHelperCode = `
-${vecType} ${helperName}(${envParams}, ${vecType} ${paramName}) {
+${vecType} ${helperName}(${envParams !== '' ? envParams + ', ' : ''}${vecType} ${paramName}) {
     ${vecType} acc = ${baseCaseGlsl};
     for (int _i = 1; _i <= ${k}; _i++) {
         float ${indexParam}_fl = float(_i);

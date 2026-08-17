@@ -532,17 +532,17 @@ return cadd(ccomponent_mul(cexp(4.*clog(a)), 1617./3617.), ccomponent_mul(csquar
 `);return`${l}
 
 ${m}`}const{get:jge}=Hj;function Gge(e){const t=Number.isInteger(e)?".":"";return e.toString()+t}let I5=[],NC=0;function n5(e,t){I5=[],NC=0;try{const[r]=Jc(e,t,["z"]);return{expression:r,helpers:I5.join(`
-`)}}catch(r){return console.error("Error compiling AST to GLSL. Context: ",{ast:e,LOG_MODE:t,error:r}),null}}function Jc(e,t,r=["z"]){if(typeof e=="number"||!isNaN(e))return[Gge(Number(e)),!1];if(!Array.isArray(e))return[e,!1];let n={add:"+",sub:"-",component_mul:"*"};t&&(n={});const[a,...i]=e;if(a==="number"){const[c,l]=i;if(t){let m=pB(c,l);return m===0&&(m=1),[`vec3(${c/m}, ${l/m}, ${Go(m)})`,!1]}else return c===1&&l===0?["ONE",!1]:c===0&&l===1?["I",!1]:[`vec2(${c}, ${l})`,!1]}if(a==="variable")return[i[0],!1];if(a==="constant")return["C_"+i[0].toUpperCase(),!1];if(a==="call"){const[c,l]=i,m=l.map(d=>Jc(d,t,r)[0]);return[`${c}(${m.join(", ")})`,!1]}if(a==="indexed_loop"){let c=function(F){if(!Array.isArray(F))return F;const[$,...L]=F;return $==="call"&&L[0].startsWith(l)?["variable","acc"]:[$,...L.map(c)]};const[l,m,d,h,g,y,w]=i,A=`indexed_loop_helper_${NC++}`,E=t?"vec3":"vec2",M=r.map(F=>`${E} ${F}`).join(", "),D=r.join(", "),C=Jc(g,t,[...r,h])[0];Jc(y,t,[...r,h,d])[0];const _=c(y),S=Jc(_,t,[...r,h,d,"acc"])[0],T=`
-${E} ${A}(${M}, ${E} ${h}) {
-    ${E} acc = ${C};
+`)}}catch(r){return console.error("Error compiling AST to GLSL. Context: ",{ast:e,LOG_MODE:t,error:r}),null}}function Jc(e,t,r=["z"]){if(typeof e=="number"||!isNaN(e))return[Gge(Number(e)),!1];if(!Array.isArray(e))return[e,!1];let n={add:"+",sub:"-",component_mul:"*"};t&&(n={});const[a,...i]=e;if(a==="number"){const[c,l]=i;if(t){let m=pB(c,l);return m===0&&(m=1),[`vec3(${c/m}, ${l/m}, ${Go(m)})`,!1]}else return c===1&&l===0?["ONE",!1]:c===0&&l===1?["I",!1]:[`vec2(${c}, ${l})`,!1]}if(a==="variable")return[i[0],!1];if(a==="constant")return["C_"+i[0].toUpperCase(),!1];if(a==="call"){const[c,l]=i,m=l.map(d=>Jc(d,t,r)[0]);return[`${c}(${m.join(", ")})`,!1]}if(a==="indexed_loop"){let c=function($){if(!Array.isArray($))return $;const[L,...R]=$;return L==="call"&&R[0].startsWith(l)?["variable","acc"]:[L,...R.map(c)]};const[l,m,d,h,g,y,w]=i,A=`indexed_loop_helper_${NC++}`,E=t?"vec3":"vec2",M=r.filter($=>$!==h),D=M.map($=>`${E} ${$}`).join(", "),C=M.join(", "),_=Jc(g,t,[...r,h])[0];Jc(y,t,[...r,h,d])[0];const S=c(y),T=Jc(S,t,[...r,h,d,"acc"])[0],k=`
+${E} ${A}(${D!==""?D+", ":""}${E} ${h}) {
+    ${E} acc = ${_};
     for (int _i = 1; _i <= ${m}; _i++) {
         float ${d}_fl = float(_i);
         ${E} ${d} = ${t?`vec3(${d}_fl, 0.0, 0.0)`:`vec2(${d}_fl, 0.0)`};
-        acc = ${S};
+        acc = ${T};
     }
     return acc;
 }
-`;I5.push(T);const k=Jc(w,t,r)[0];return[`${A}(${D!==""?D+", ":""}${k})`,!1]}if(a==="sum"||a==="prod"){const[c,l,m,d]=i,h=`loop_helper_${NC++}`,g=t?"vec3":"vec2",y=r.map(_=>`${g} ${_}`).join(", "),w=r.join(", "),A=[...r,l],E=Jc(c,t,A)[0],M=a==="sum"?"ZERO":"ONE",D=a==="sum"?"cadd":"cmul",C=`
+`;I5.push(k);const F=Jc(w,t,r)[0];return[`${A}(${C!==""?C+", ":""}${F})`,!1]}if(a==="sum"||a==="prod"){const[c,l,m,d]=i,h=`loop_helper_${NC++}`,g=t?"vec3":"vec2",y=r.map(_=>`${g} ${_}`).join(", "),w=r.join(", "),A=[...r,l],E=Jc(c,t,A)[0],M=a==="sum"?"ZERO":"ONE",D=a==="sum"?"cadd":"cmul",C=`
 ${g} ${h}(${y}) {
     ${g} acc = ${M};
     for (int _i = ${m}; _i <= ${d}; _i++) {
