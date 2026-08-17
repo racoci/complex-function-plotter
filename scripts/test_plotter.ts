@@ -198,6 +198,36 @@ function runTests() {
         }
         console.log("  ✓ Successfully generated custom GLSL shader source containing Mandelbrot loop!");
 
+        // ----------------------------------------------------
+        // TEST 10: Static Shader Uniform Declaration Check
+        // ----------------------------------------------------
+        console.log("\n[Test 10] Testing static shader uniform declaration integrity...");
+        const dummyAST = parseExpression("z");
+        if (!dummyAST) throw new Error("Failed to parse dummy AST for Test 10");
+        
+        const generatedShader = getFragmentShaderSource(dummyAST, false, 800, 600, ["c"], false);
+        if (!generatedShader) {
+            throw new Error("Failed to generate fragment shader source for Test 10");
+        }
+
+        const requiredSystemVars = [
+            'log_scale', 'center_x', 'center_y', 'enable_axes', 'enable_checkerboard',
+            'invert_gradient', 'continuous_gradient', 'grid_type', 'polar_grid'
+        ];
+
+        const uniformMatches = generatedShader.matchAll(/uniform\s+(?:vec2|vec3)\s+([a-zA-Z0-9_]+);/g);
+        const declaredUniforms = new Set<string>();
+        for (const match of uniformMatches) {
+            declaredUniforms.add(match[1]);
+        }
+
+        for (const sysVar of requiredSystemVars) {
+            if (!declaredUniforms.has(sysVar)) {
+                throw new Error(`Regression detected: System uniform "${sysVar}" is referenced in the shader body but was NOT declared!`);
+            }
+        }
+        console.log("  ✓ All required system uniforms are successfully declared in the generated shader!");
+
         console.log("\n🎉 ALL RECURSIVE & SUBSCRIPT ENHANCEMENT TESTS PASSED SUCCESSFULLY! 🎉\n");
     } catch (err) {
         console.error("\n❌ ENHANCEMENT TESTS FAILED:");
