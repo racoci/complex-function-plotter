@@ -20,15 +20,48 @@ export function convertMathLiveToAlgebraic(latex: string): string {
     algebraic = algebraic.replace(/\\mleft/g, '');
     algebraic = algebraic.replace(/\\mright/g, '');
 
-    // 2. Fractions: \frac{a}{b} -> (a)/(b)
-    // We must handle nested fractions, so a regex with a simple replacer loop is best
-    let previous = "";
-    while (previous !== algebraic) {
-        previous = algebraic;
-        // Match \frac{A}{B} where A and B can contain non-braced characters
-        // Note: For arbitrary nested braces we would need a proper parenthesis balancer, 
-        // but for typical MathLive output this loop unrolls from inside out.
-        algebraic = algebraic.replace(/\\frac{([^{}]*)}{([^{}]*)}/g, '($1)/($2)');
+    // 2. Fractions: \frac{a}{b}, \cfrac{a}{b}, \dfrac{a}{b} -> (a)/(b)
+    // We must handle nested fractions and braces, so a balanced parenthesis extractor is used.
+    let fractionReplaced = true;
+    while (fractionReplaced) {
+        fractionReplaced = false;
+        const fracMatch = algebraic.match(/\\(?:c|d)?frac\{/);
+        if (fracMatch && fracMatch.index !== undefined) {
+            const i = fracMatch.index;
+            const prefix = fracMatch[0];
+            
+            let depth = 0;
+            let numStart = i + prefix.length;
+            let numEnd = -1;
+            for (let j = numStart; j < algebraic.length; j++) {
+                if (algebraic[j] === '{') depth++;
+                else if (algebraic[j] === '}') {
+                    if (depth === 0) { numEnd = j; break; }
+                    depth--;
+                }
+            }
+            if (numEnd !== -1) {
+                let denStart = algebraic.indexOf('{', numEnd + 1);
+                if (denStart !== -1) {
+                    denStart++;
+                    depth = 0;
+                    let denEnd = -1;
+                    for (let j = denStart; j < algebraic.length; j++) {
+                        if (algebraic[j] === '{') depth++;
+                        else if (algebraic[j] === '}') {
+                            if (depth === 0) { denEnd = j; break; }
+                            depth--;
+                        }
+                    }
+                    if (denEnd !== -1) {
+                        const num = algebraic.substring(numStart, numEnd);
+                        const den = algebraic.substring(denStart, denEnd);
+                        algebraic = algebraic.substring(0, i) + `(${num})/(${den})` + algebraic.substring(denEnd + 1);
+                        fractionReplaced = true;
+                    }
+                }
+            }
+        }
     }
     
     // 3. Mathematical Constants
@@ -51,7 +84,7 @@ export function convertMathLiveToAlgebraic(latex: string): string {
     
     // 5. Square roots: \sqrt{a} -> sqrt(a)
     // and \sqrt[n]{a} -> a^(1/n)
-    previous = "";
+    let previous = "";
     while (previous !== algebraic) {
         previous = algebraic;
         algebraic = algebraic.replace(/\\sqrt\[([^{}\[\]]*)\]{([^{}]*)}/g, '($2)^(1/($1))');
