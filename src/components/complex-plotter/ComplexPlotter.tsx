@@ -64,6 +64,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   const axesCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mathFieldRef = useRef<any>(null);
+  const mathFieldRefs = useRef<any[]>([]);
 
   // Default function definitions list
   const [functionDefs, setFunctionDefs] = useState<Record<string, FunctionDef>>({
@@ -143,12 +144,12 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   const [showSettings, setShowSettings] = useState(false);
   const [showDefinitionsEditor, setShowDefinitionsEditor] = useState(false);
 
-  // Local state for the freeform multi-line text editor
-  const [editorText, setEditorText] = useState<string>(
-    `f(z) = z^2 + c
-g(z) = sin(z) * c_1
-f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
-  );
+  // Local state for the freeform formulas lines edited via MathLive
+  const [formulaLines, setFormulaLines] = useState<string[]>([
+    "f(z) = z^2 + c",
+    "g(z) = \\sin(z) \\cdot c_1",
+    "f_k(z) = f_{k-1}(z - c_k) \\text{ with } f_0(z) = z"
+  ]);
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
 
   // State for the custom GLSL code editor
@@ -377,18 +378,22 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
     </label>
   );
 
-  // Automatically parse and compile the freeform multi-line editorText into functionDefs
+  // Automatically parse and compile the freeform formulas lines edited via MathLive into functionDefs
   useEffect(() => {
-    const lines = editorText.split('\n');
     const newDefs: Record<string, FunctionDef> = {};
     const currentErrors: string[] = [];
 
-    lines.forEach((line, index) => {
+    formulaLines.forEach((line, index) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return; // Skip empty lines and comments
 
+      // Convert LaTeX to algebraic
+      let algebraic = convertMathLiveToAlgebraic(trimmed);
+      // Clean up braces around separators (leftovers from \text{ with } or \text{where})
+      algebraic = algebraic.replace(/\{?\s*(with|where)\s*\}?/gi, ' $1 ');
+
       // Try matching indexed recursive function: f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z
-      const indexedMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_([a-zA-Z_])\((.*?)\)\s*=\s*(.*?)\s+(?:with|where|;|,\s*)\s+\1_0\((.*?)\)\s*=\s*(.*)$/i);
+      const indexedMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_([a-zA-Z_])\((.*?)\)\s*=\s*(.*?)\s+(?:with|where|;|,\s*)\s+\1_0\((.*?)\)\s*=\s*(.*)$/i);
       if (indexedMatch) {
         const name = indexedMatch[1];
         const indexParam = indexedMatch[2];
@@ -420,7 +425,7 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
       }
 
       // Try matching standard function: f(z) = z^2 + c
-      const standardMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)\s*=\s*(.*)$/);
+      const standardMatch = algebraic.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)\s*=\s*(.*)$/);
       if (standardMatch) {
         const name = standardMatch[1];
         const param = standardMatch[2].trim();
@@ -457,7 +462,7 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
          setSelectedFunction(firstKey);
       }
     }
-  }, [editorText, lang]);
+  }, [formulaLines, lang]);
 
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-black font-sans shadow-2xl">
@@ -575,14 +580,95 @@ f_k(z) = f_{k-1}(z - c_k) with f_0(z) = z`
             </button>
             {showDefinitionsEditor && (
               <div className="p-3.5 border-t border-zinc-800/40 flex flex-col gap-3 custom-scrollbar overflow-y-auto max-h-96">
-                <textarea
-                  value={editorText}
-                  onChange={e => setEditorText(e.target.value)}
-                  spellCheck={false}
-                  rows={6}
-                  className={`w-full min-h-[160px] bg-zinc-900/60 border ${editorErrors.length > 0 ? 'border-red-500/80 focus:border-red-400' : 'border-zinc-800/80 focus:border-emerald-500'} text-emerald-300 font-mono p-3 rounded-lg text-xs outline-none resize-none transition-all custom-scrollbar`}
-                  placeholder={lang === 'pt' ? "# Escreva uma fórmula por linha\nf(z) = z^2 + c\ng(z) = sin(z) * c_1\nf_k(z) = f_{k-1}(z - c_k) with f_0(z) = z" : "# Write one formula per line\nf(z) = z^2 + c\ng(z) = sin(z) * c_1\nf_k(z) = f_{k-1}(z - c_k) with f_0(z) = z"}
-                />
+                <div className="flex flex-col gap-2">
+                  {formulaLines.map((line, index) => (
+                    <div key={index} className="flex gap-2 items-center w-full group">
+                      {React.createElement('math-field', {
+                        ref: (el: any) => {
+                          mathFieldRefs.current[index] = el;
+                        },
+                        value: line,
+                        onChange: (e: any) => {
+                          const newValue = e.target.value;
+                          setFormulaLines(prev => {
+                            const next = [...prev];
+                            next[index] = newValue;
+                            return next;
+                          });
+                        },
+                        onKeyDown: (e: any) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            setFormulaLines(prev => {
+                              const next = [...prev];
+                              next.splice(index + 1, 0, "");
+                              return next;
+                            });
+                            setTimeout(() => {
+                              const nextField = mathFieldRefs.current[index + 1];
+                              if (nextField) nextField.focus();
+                            }, 50);
+                          } else if (e.key === 'Backspace' && e.target.value === "") {
+                            e.preventDefault();
+                            if (formulaLines.length > 1) {
+                              setFormulaLines(prev => prev.filter((_, i) => i !== index));
+                              setTimeout(() => {
+                                const prevField = mathFieldRefs.current[index - 1];
+                                if (prevField) prevField.focus();
+                              }, 50);
+                            }
+                          } else if (e.key === 'ArrowUp') {
+                            const prevField = mathFieldRefs.current[index - 1];
+                            if (prevField) prevField.focus();
+                          } else if (e.key === 'ArrowDown') {
+                            const nextField = mathFieldRefs.current[index + 1];
+                            if (nextField) nextField.focus();
+                          }
+                        },
+                        style: {
+                          flex: '1',
+                          padding: '8px',
+                          backgroundColor: 'rgba(24, 24, 27, 0.6)',
+                          color: '#6ee7b7', // light emerald
+                          borderRadius: '0.375rem',
+                          border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
+                            ? '1px solid #ef4444' 
+                            : '1px solid rgba(63, 63, 70, 0.5)',
+                          boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
+                            ? '0 0 8px rgba(239, 68, 68, 0.2)'
+                            : 'none',
+                          outline: 'none',
+                          fontSize: '13px'
+                        }
+                      })}
+                      
+                      {formulaLines.length > 1 && (
+                        <button 
+                          onClick={() => {
+                            setFormulaLines(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          className="text-red-500/60 hover:text-red-400 p-1.5 cursor-pointer text-[10px] font-mono transition-colors opacity-0 group-hover:opacity-100"
+                          title={lang === 'pt' ? 'Excluir linha' : 'Delete line'}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setFormulaLines(prev => [...prev, ""]);
+                    setTimeout(() => {
+                      const nextField = mathFieldRefs.current[formulaLines.length];
+                      if (nextField) nextField.focus();
+                    }, 50);
+                  }}
+                  className="border border-dashed border-zinc-800 hover:border-emerald-500/50 text-zinc-400 hover:text-emerald-400 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all mt-1"
+                >
+                  + {lang === 'pt' ? "Adicionar Linha (Enter)" : "Add Line (Enter)"}
+                </button>
 
                 {editorErrors.length > 0 && (
                   <div className="flex flex-col gap-1.5 bg-red-950/20 border border-red-900/40 p-3 rounded-lg text-[11px] font-mono text-red-400 custom-scrollbar max-h-28 overflow-y-auto">
