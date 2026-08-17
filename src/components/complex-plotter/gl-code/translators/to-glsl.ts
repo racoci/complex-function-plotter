@@ -67,6 +67,75 @@ function toGLSL(ast: ASTNode, LOG_MODE: boolean, env: string[] = ['z']): [string
         return [`${funcName}(${compiledArgs.join(', ')})`, false];
     }
     
+    if (operator === 'indexed_loop') {
+        const [baseName, k, indexParam, paramName, baseCaseAst, bodyAst, initArgAst] = args;
+        const helperName = `indexed_loop_helper_${helperCount++}`;
+        const vecType = LOG_MODE ? 'vec3' : 'vec2';
+        
+        const envParams = env.map(v => `${vecType} ${v}`).join(', ');
+        const envArgs = env.join(', ');
+        
+        // Compile base case replacing param with z
+        const baseCaseGlsl = toGLSL(baseCaseAst, LOG_MODE, [...env, paramName])[0];
+        
+        // Compile iterative body replacing param and indexParam
+        const bodyGlsl = toGLSL(bodyAst, LOG_MODE, [...env, paramName, indexParam])[0];
+
+        const helperCode = `
+${vecType} ${helperName}(${envParams}, ${vecType} ${paramName}) {
+    ${vecType} acc = ${baseCaseGlsl};
+    for (int _i = 1; _i <= ${k}; _i++) {
+        float ${indexParam}_fl = float(_i);
+        ${vecType} ${indexParam} = ${LOG_MODE ? `vec3(${indexParam}_fl, 0.0, 0.0)` : `vec2(${indexParam}_fl, 0.0)`};
+        
+        // Setup internal recursive step where previous output becomes new input: f(f(z))
+        // So we substitute ${baseName}_{i-1}(z) -> acc
+        // Due to lack of full macro replacement in strings, we assume standard calls to f_{i-1} in the loop body 
+        // are compiled as calls if not cleanly handled by the string replacement.
+        // But since this is inside a generated loop, we handle it by defining a local macro or doing a string replace.
+        // A simpler way: we pass the body, and string replace references to the recursive call with 'acc'.
+    }
+    return acc;
+}
+`;      
+        // Actually, to correctly substitute the recursive call like f_{k-1}(z) with `acc` in the GLSL body:
+        // We compile the body first, but we need to tell it that a call to f_{k-1} is just 'acc'.
+        // We can do this cleanly by replacing the call in the AST before compiling GLSL.
+        
+        // A better approach is to modify the AST recursively before calling toGLSL on the body:
+        function replaceRecursiveCall(astNode: ASTNode): ASTNode {
+             if (!Array.isArray(astNode)) return astNode;
+             const [op, ...nodeArgs] = astNode as [string, ...any[]];
+             if (op === 'call') {
+                 const callName = nodeArgs[0] as string;
+                 // If the call matches the baseName (e.g. f_k-1 or f)
+                 if (callName.startsWith(baseName)) {
+                     return ['variable', 'acc'];
+                 }
+             }
+             return [op, ...nodeArgs.map(replaceRecursiveCall)];
+        }
+        
+        const modifiedBodyAst = replaceRecursiveCall(bodyAst);
+        const finalBodyGlsl = toGLSL(modifiedBodyAst, LOG_MODE, [...env, paramName, indexParam, 'acc'])[0];
+
+        const finalHelperCode = `
+${vecType} ${helperName}(${envParams}, ${vecType} ${paramName}) {
+    ${vecType} acc = ${baseCaseGlsl};
+    for (int _i = 1; _i <= ${k}; _i++) {
+        float ${indexParam}_fl = float(_i);
+        ${vecType} ${indexParam} = ${LOG_MODE ? `vec3(${indexParam}_fl, 0.0, 0.0)` : `vec2(${indexParam}_fl, 0.0)`};
+        acc = ${finalBodyGlsl};
+    }
+    return acc;
+}
+`;
+        helpers.push(finalHelperCode);
+        const initArgGlsl = toGLSL(initArgAst, LOG_MODE, env)[0];
+        
+        return [`${helperName}(${envArgs !== '' ? envArgs + ', ' : ''}${initArgGlsl})`, false];
+    }
+
     if (operator === 'sum' || operator === 'prod') {
         const [expr, idxVar, low, high] = args;
         const helperName = `loop_helper_${helperCount++}`;

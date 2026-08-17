@@ -938,7 +938,8 @@ export function resolveFunctions(
     ast: ASTNode, 
     definitions: Record<string, FunctionDef>, 
     indexValues: Record<string, number>,
-    activeUnrolls: Set<string> = new Set()
+    activeUnrolls: Set<string> = new Set(),
+    glslLoopMode: boolean = false
 ): ASTNode {
     if (typeof ast === 'number' || typeof ast === 'string') {
         return ast;
@@ -951,7 +952,7 @@ export function resolveFunctions(
         const name = args[0] as string;
         const callArgs = args[1] as ASTNode[];
         
-        const resolvedCallArgs = callArgs.map(arg => resolveFunctions(arg, definitions, indexValues, activeUnrolls));
+        const resolvedCallArgs = callArgs.map(arg => resolveFunctions(arg, definitions, indexValues, activeUnrolls, glslLoopMode));
 
         let baseName = name;
         let indexVal: number | undefined = undefined;
@@ -968,6 +969,13 @@ export function resolveFunctions(
         const def = definitions[name] || definitions[baseName] || definitions[`${baseName}_k`] || definitions[`${baseName}_i`] || definitions[`${baseName}_j`];
         
         if (def) {
+            if (def.isIndexed && glslLoopMode) {
+                // Do not unroll. Leave a special AST node that `compiler.ts` and `to-glsl.ts` can use to build a native GLSL for-loop.
+                // Reconstruct the definition structure.
+                const k = indexVal !== undefined ? indexVal : (indexValues[baseName] !== undefined ? indexValues[baseName] : 0);
+                return ['indexed_loop', baseName, k, def.indexParam, def.param, def.baseCase, def.body, resolvedCallArgs[0]];
+            }
+
             const unrollKey = `${name}(${JSON.stringify(resolvedCallArgs)})`;
             if (activeUnrolls.has(unrollKey)) {
                 throw new Error(`Circular dependency or infinite recursion detected in function calls: ${name}`);
@@ -981,21 +989,21 @@ export function resolveFunctions(
                 if (k === 0) {
                     const baseAST = def.baseCase || ['variable', def.param];
                     const replaced = substituteInAST(baseAST, { [def.param]: resolvedCallArgs[0] });
-                    return resolveFunctions(replaced, definitions, indexValues, nextUnrolls);
+                    return resolveFunctions(replaced, definitions, indexValues, nextUnrolls, glslLoopMode);
                 } else {
                     const replaced = substituteInAST(def.body, { [def.param]: resolvedCallArgs[0] }, def.indexParam, k);
-                    return resolveFunctions(replaced, definitions, indexValues, nextUnrolls);
+                    return resolveFunctions(replaced, definitions, indexValues, nextUnrolls, glslLoopMode);
                 }
             } else {
                 const replaced = substituteInAST(def.body, { [def.param]: resolvedCallArgs[0] });
-                return resolveFunctions(replaced, definitions, indexValues, nextUnrolls);
+                return resolveFunctions(replaced, definitions, indexValues, nextUnrolls, glslLoopMode);
             }
         } else {
             return ['call', name, resolvedCallArgs];
         }
     }
 
-    return [op, ...args.map(child => resolveFunctions(child as ASTNode, definitions, indexValues, activeUnrolls))];
+    return [op, ...args.map(child => resolveFunctions(child as ASTNode, definitions, indexValues, activeUnrolls, glslLoopMode))];
 }
 
 function substituteInAST(ast: ASTNode, replacements: Record<string, ASTNode>, indexParam?: string, indexVal?: number): ASTNode {
@@ -1106,14 +1114,15 @@ export function validateLoopBounds(ast: ASTNode): void {
 function parseExpression(
     expression: string, 
     definitions: Record<string, FunctionDef> = {}, 
-    indexValues: Record<string, number> = {}
+    indexValues: Record<string, number> = {},
+    glslLoopMode: boolean = false
 ): ASTNode | null {
     try {
         const raw = parseRawExpression(expression);
         if (raw === null) return null;
         
         // Resolve function calls and unroll recursive structures
-        const resolved = resolveFunctions(raw, definitions, indexValues);
+        const resolved = resolveFunctions(raw, definitions, indexValues, new Set(), glslLoopMode);
         
         // Safety check on AST depth and operations count
         const stats = getASTStats(resolved);

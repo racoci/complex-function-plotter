@@ -11,6 +11,13 @@ import { convertMathLiveToAlgebraic } from './gl-code/translators/mathlive-conve
 import { FunctionDef } from './gl-code/types';
 import 'mathlive';
 
+// Prism.js for GLSL syntax highlighting
+import Editor from 'react-simple-code-editor';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-c';
+import 'prismjs/components/prism-glsl';
+import 'prismjs/themes/prism-twilight.css';
+
 export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) {
   const t = lang === 'pt' ? {
     title: 'Gráficos Complexos',
@@ -189,7 +196,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
       }
 
       // Compile using parseExpression with definitions and indexValues
-      const ast = parseExpression(exprToParse, functionDefs, indexValues);
+      const ast = parseExpression(exprToParse, functionDefs, indexValues, true);
       if (ast) {
         // ----------------------------------------------------
         // CPU SAFETY GATE EVALUATION
@@ -925,13 +932,21 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
               {isEditingGLSL && (
                 <div className="flex flex-col gap-1.5 border-t border-zinc-800/40 pt-3">
                   <span className="text-xs font-semibold text-zinc-400 font-mono">vec2 mapping(vec2 z)</span>
-                  <textarea
-                    value={glslCode}
-                    onChange={e => setGlslCode(e.target.value)}
-                    rows={10}
-                    spellCheck={false}
-                    className="w-full bg-zinc-900/60 border border-zinc-800/80 text-emerald-400 font-mono p-2.5 rounded-lg text-xs outline-none focus:border-emerald-500 resize-none custom-scrollbar"
-                  />
+                  <div className="w-full bg-zinc-900/60 border border-zinc-800/80 rounded-lg text-xs outline-none focus-within:border-emerald-500 custom-scrollbar overflow-hidden">
+                    <Editor
+                      value={glslCode}
+                      onValueChange={code => setGlslCode(code)}
+                      highlight={code => Prism.highlight(code, Prism.languages.glsl, 'glsl')}
+                      padding={10}
+                      style={{
+                        fontFamily: '"Fira Code", "JetBrains Mono", monospace',
+                        fontSize: 12,
+                        backgroundColor: 'transparent',
+                        minHeight: '180px'
+                      }}
+                      className="custom-scrollbar"
+                    />
+                  </div>
                   <p className="text-[10px] text-zinc-500 italic">
                     {lang === 'pt' ? "* Altere para escrever loops ou lógicas de fractais customizadas." : "* Modify this to write raw loops or custom fractal logic."}
                   </p>
