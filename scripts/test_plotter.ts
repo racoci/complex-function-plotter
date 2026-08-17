@@ -273,6 +273,17 @@ function runTests() {
         }
         console.log("  ✓ Successfully scrubbed color tags! Result: " + scrubbedAlgebraic);
 
+        // ----------------------------------------------------
+        // TEST 13: Unicode Superscripts and Custom LaTeX Operators Check
+        // ----------------------------------------------------
+        console.log("\n[Test 13] Testing Unicode superscripts and custom LaTeX operators...");
+        const unicodeLaTeX = "w⁶ + w\\pow 3 - c\\sub{k-1}";
+        const processedUnicode = convertMathLiveToAlgebraic(unicodeLaTeX);
+        if (processedUnicode !== "w^6 + w^ 3 - c_{k-1}") {
+            throw new Error(`Failed to process Unicode superscripts or custom operators: "${processedUnicode}"`);
+        }
+        console.log("  ✓ Successfully converted Unicode superscripts and custom operators! Result: " + processedUnicode);
+
         console.log("\n🎉 ALL RECURSIVE & SUBSCRIPT ENHANCEMENT TESTS PASSED SUCCESSFULLY! 🎉\n");
     } catch (err) {
         console.error("\n❌ ENHANCEMENT TESTS FAILED:");

@@ -7,6 +7,19 @@ export function convertMathLiveToAlgebraic(latex: string): string {
     
     let algebraic = latex;
 
+    // Replace custom user operators \pow with ^ and \sub with _
+    algebraic = algebraic.replace(/\\pow/g, '^');
+    algebraic = algebraic.replace(/\\sub/g, '_');
+
+    // Replace unicode superscripts (e.g. ⁶) with standard caret notation (e.g. ^6)
+    const superscripts: Record<string, string> = {
+        '⁰': '^0', '¹': '^1', '²': '^2', '³': '^3', '⁴': '^4',
+        '⁵': '^5', '⁶': '^6', '⁷': '^7', '⁸': '^8', '⁹': '^9'
+    };
+    for (const [sup, repl] of Object.entries(superscripts)) {
+        algebraic = algebraic.replaceAll(sup, repl);
+    }
+
     // 0. Remove \textcolor{color}{content} -> content using balanced braces matching
     let textcolorReplaced = true;
     while (textcolorReplaced) {
