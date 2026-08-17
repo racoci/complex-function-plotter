@@ -175,18 +175,6 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   // Dragging custom variables
   const [activeVar, setActiveVar] = useState<string | null>(null);
 
-  // Monitor selected function changes
-  useEffect(() => {
-    const def = functionDefs[selectedFunction];
-    if (def && def.isIndexed) {
-      setKConfirmed(false);
-      setShowPromptPrompt(true);
-    } else {
-      setKConfirmed(true);
-      setShowPromptPrompt(false);
-    }
-  }, [selectedFunction]);
-
   // Parse and validate expression
   useEffect(() => {
     if (!kConfirmed) return; // Halt rendering if k is not confirmed yet for indexed function
@@ -736,26 +724,27 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                     }
 
                     return (
-                      <div key={index} className="flex gap-2 items-center w-full group">
+                      <div key={index} className="flex gap-2.5 items-center w-full group">
+                        {/* Selector Eye button */}
                         {key && !isBase && (
-                          <button
-                            onClick={() => {
-                              setSelectedFunction(key);
-                              if (functionDefs[key]?.isIndexed) {
-                                 setKConfirmed(false);
-                                 setShowPromptPrompt(true);
-                              }
-                            }}
-                            className={`p-1.5 h-9 w-9 rounded-lg border flex items-center justify-center cursor-pointer transition-all ${selectedFunction === key ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)] font-bold' : 'border-zinc-800/80 bg-zinc-900/30 text-zinc-500 hover:text-zinc-300'}`}
-                            title={lang === 'pt' ? `Visualizar esta função (${key})` : `Visualize this function (${key})`}
-                          >
-                            👁️
-                          </button>
+                           <button
+                             onClick={() => {
+                               setSelectedFunction(key);
+                             }}
+                             className={`p-2 h-11 w-11 rounded-xl border flex items-center justify-center cursor-pointer transition-all ${
+                                selectedFunction === key 
+                                  ? (theme === 'dark' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)] font-bold' : 'border-emerald-600 bg-emerald-500/20 text-emerald-600 shadow-[0_0_10px_rgba(5,150,105,0.2)] font-bold') 
+                                  : (theme === 'dark' ? 'border-zinc-800/80 bg-zinc-900/30 text-zinc-500 hover:text-zinc-300' : 'border-gray-300 bg-gray-100/50 text-gray-500 hover:text-gray-800')
+                             }`}
+                             title={lang === 'pt' ? `Visualizar esta função (${key})` : `Visualize this function (${key})`}
+                           >
+                             👁️
+                           </button>
                         )}
                         {isBase && (
-                          <div className="w-9 h-9 flex items-center justify-center text-xs text-zinc-600 font-mono">
-                            ↳
-                          </div>
+                           <div className={`w-11 h-11 flex items-center justify-center text-sm font-mono ${theme === 'dark' ? 'text-zinc-600' : 'text-gray-400'}`}>
+                             ↳
+                           </div>
                         )}
 
                         {React.createElement('math-field', {
@@ -802,18 +791,18 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                           },
                           style: {
                             flex: '1',
-                            padding: '8px',
+                            padding: '10px 12px',
                             backgroundColor: theme === 'dark' ? 'rgba(24, 24, 27, 0.6)' : 'rgba(255, 255, 255, 0.6)',
-                            color: theme === 'dark' ? '#6ee7b7' : '#059669', // emerald
-                            borderRadius: '0.375rem',
+                            color: theme === 'dark' ? '#6ee7b7' : '#059669',
+                            borderRadius: '0.5rem',
                             border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
-                              ? '1px solid #ef4444' 
+                              ? '1.5px solid #ef4444' 
                               : (theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(209, 213, 219, 0.8)'),
                             boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
-                              ? '0 0 8px rgba(239, 68, 68, 0.2)'
+                              ? '0 0 10px rgba(239, 68, 68, 0.3)'
                               : 'none',
                             outline: 'none',
-                            fontSize: '13px'
+                            fontSize: '15px'
                           }
                         })}
                         
@@ -822,7 +811,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                             onClick={() => {
                               setFormulaLines(prev => prev.filter((_, i) => i !== index));
                             }}
-                            className="text-red-500/60 hover:text-red-400 p-1.5 cursor-pointer text-[10px] font-mono transition-colors opacity-0 group-hover:opacity-100"
+                            className="text-red-500/60 hover:text-red-500 p-2 cursor-pointer text-xs font-mono transition-colors opacity-0 group-hover:opacity-100"
                             title={lang === 'pt' ? 'Excluir linha' : 'Delete line'}
                           >
                             ✕
