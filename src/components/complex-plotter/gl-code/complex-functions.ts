@@ -997,7 +997,14 @@ export function resolveFunctions(
             }
         }
 
-        const def = definitions[name] || definitions[baseName] || definitions[`${baseName}_k`] || definitions[`${baseName}_i`] || definitions[`${baseName}_j`];
+        let def = definitions[name];
+        if (!def) {
+            if (indexVal !== undefined || name.includes('_')) {
+                def = definitions[`${baseName}_k`] || definitions[`${baseName}_i`] || definitions[`${baseName}_j`] || definitions[baseName];
+            } else {
+                def = definitions[baseName];
+            }
+        }
         
         if (def) {
             if (def.isIndexed && glslLoopMode) {

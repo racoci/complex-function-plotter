@@ -306,7 +306,8 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   // Local state for the freeform formulas lines edited via MathLive with beautiful color-coding highlights
   const [formulaLines, setFormulaLines] = useState<string[]>([
     "\\textcolor{#f97316}{f}(\\textcolor{#38bdf8}{z}) = \\textcolor{#f97316}{f}\\textcolor{#eab308}{_6}(\\textcolor{#38bdf8}{z})",
-    "\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k}}(\\textcolor{#38bdf8}{z}) = \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z}) - \\frac{\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z})^6 - \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z}) - 1}{6 \\cdot \\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z})^5 - 1}",
+    "\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k}}(\\textcolor{#38bdf8}{z}) = \\textcolor{#f97316}{g}(\\textcolor{#f97316}{f}\\textcolor{#eab308}{_{k-1}}(\\textcolor{#38bdf8}{z}))",
+    "\\textcolor{#f97316}{g}(\\textcolor{#38bdf8}{w}) = \\textcolor{#38bdf8}{w} - \\frac{\\textcolor{#38bdf8}{w}^6 - \\textcolor{#38bdf8}{w} - 1}{6 \\cdot \\textcolor{#38bdf8}{w}^5 - 1}",
     "\\textcolor{#f97316}{f}\\textcolor{#eab308}{_0}(\\textcolor{#38bdf8}{z}) = \\textcolor{#38bdf8}{z}"
   ]);
 
