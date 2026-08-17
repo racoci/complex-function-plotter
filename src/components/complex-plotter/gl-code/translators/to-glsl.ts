@@ -61,6 +61,11 @@ function toGLSL(ast: ASTNode, LOG_MODE: boolean, env: string[] = ['z']): [string
 
     if (operator === 'variable') {return [args[0], false];}
     if (operator === 'constant') {return ['C_' + args[0].toUpperCase(), false];}
+    if (operator === 'call') {
+        const [funcName, funcArgs] = args;
+        const compiledArgs = (funcArgs as ASTNode[]).map(x => toGLSL(x, LOG_MODE, env)[0]);
+        return [`${funcName}(${compiledArgs.join(', ')})`, false];
+    }
     
     if (operator === 'sum' || operator === 'prod') {
         const [expr, idxVar, low, high] = args;

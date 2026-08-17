@@ -90,9 +90,9 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
     }
   });
 
-  const [selectedFunction, setSelectedFunction] = useState<string>("f");
+  const [selectedFunction, setSelectedFunction] = useState<string>("f_k");
   const [indexValues, setIndexValues] = useState<Record<string, number>>({
-    "f_k": 3
+    "f_k": 6
   });
 
   // Track if the user has unlocked/confirmed their selected k for the indexed function
@@ -148,7 +148,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
   const [formulaLines, setFormulaLines] = useState<string[]>([
     "f(z) = z^2 + c",
     "g(z) = \\sin(z) \\cdot c_1",
-    "f_k(z) = f_{k-1}(z - c_k)",
+    "f_k(z) = f_{k-1}(z) - (f_{k-1}(z)^6 - f_{k-1}(z) - 1) / (6 \\cdot f_{k-1}(z)^5 - 1)",
     "f_0(z) = z"
   ]);
   const [editorErrors, setEditorErrors] = useState<string[]>([]);
@@ -240,6 +240,38 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
       setError(err?.message || "Compilation Error");
     }
   }, [selectedFunction, functionDefs, indexValues, kConfirmed, isEditingGLSL]);
+
+  // Performance Benchmark to dynamically calibrate maximum recursion limits (up to 64)
+  const [maxRecursionLimit, setMaxRecursionLimit] = useState<number>(12);
+
+  useEffect(() => {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl');
+    if (!gl) return;
+
+    const testKValues = [12, 24, 32, 48, 64];
+    let bestK = 12;
+
+    for (const k of testKValues) {
+      let testAST: any = ["variable", "z"];
+      for (let i = 0; i < k; i++) {
+        testAST = ["add", ["square", testAST], ["variable", "c"]];
+      }
+
+      const start = performance.now();
+      const varLocations = initializeScene(gl, testAST, false, ["c"]);
+      const duration = performance.now() - start;
+
+      if (varLocations && duration < 35) {
+        bestK = k;
+      } else {
+        break;
+      }
+    }
+
+    console.log(`[Hardware Benchmark] Dynamically determined maximum recursion limit of k = ${bestK}`);
+    setMaxRecursionLimit(bestK);
+  }, []);
 
   // Monitor resize of container
   useEffect(() => {
@@ -611,25 +643,6 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
             <h2 className="text-xl font-bold mb-1 text-zinc-100">{t.title}</h2>
             <p className="text-xs text-zinc-400 mb-3">{t.desc}</p>
             
-            {/* Function Selector Dropdown */}
-            <div className="flex flex-col gap-1 mb-3">
-              <label className="text-xs font-semibold text-zinc-400">{t.selectFunc}</label>
-              <select 
-                value={selectedFunction} 
-                onChange={e => setSelectedFunction(e.target.value)}
-                className="bg-zinc-900/60 border border-zinc-800 text-emerald-400 p-2.5 rounded-lg text-sm w-full outline-none focus:border-emerald-500 transition-colors cursor-pointer"
-              >
-                {Object.keys(functionDefs).map(key => {
-                  const def = functionDefs[key];
-                  return (
-                    <option key={key} value={key} className="bg-zinc-950 text-emerald-400">
-                      {def.isIndexed ? `${def.name}(${def.param}) (${lang === 'pt' ? 'Recursiva' : 'Recursive'})` : `${def.name}(${def.param})`}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
             {/* Slider for k (visible dynamically after confirmation/unlocking) */}
             {functionDefs[selectedFunction]?.isIndexed && kConfirmed && (
                <div className="flex flex-col gap-2 p-2.5 bg-emerald-500/5 border border-emerald-500/20 rounded-lg mb-3">
@@ -640,7 +653,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                    </span>
                  </div>
                  <input 
-                   type="range" min="0" max="12" 
+                   type="range" min="0" max={maxRecursionLimit} 
                    value={indexValues[selectedFunction] ?? 3} 
                    onChange={e => {
                      const val = parseInt(e.target.value, 10);
@@ -690,80 +703,119 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
             {showDefinitionsEditor && (
               <div className="p-3.5 border-t border-zinc-800/40 flex flex-col gap-3 custom-scrollbar overflow-y-auto max-h-96">
                 <div className="flex flex-col gap-2">
-                  {formulaLines.map((line, index) => (
-                    <div key={index} className="flex gap-2 items-center w-full group">
-                      {React.createElement('math-field', {
-                        ref: (el: any) => {
-                          mathFieldRefs.current[index] = el;
-                        },
-                        value: line,
-                        onChange: (e: any) => {
-                          const newValue = e.target.value;
-                          setFormulaLines(prev => {
-                            const next = [...prev];
-                            next[index] = newValue;
-                            return next;
-                          });
-                        },
-                        onKeyDown: (e: any) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
+                  {formulaLines.map((line, index) => {
+                    const trimmedLine = line.trim();
+                    let key = "";
+                    let isBase = false;
+                    
+                    const indexedM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([a-zA-Z_])\}?\(/i);
+                    const baseCaseM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)_\{?([0-9]+)\}?\(/i);
+                    const standardM = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\(/);
+
+                    if (indexedM) {
+                      key = `${indexedM[1]}_${indexedM[2]}`;
+                    } else if (baseCaseM) {
+                      isBase = true;
+                    } else if (standardM) {
+                      key = standardM[1];
+                    }
+
+                    return (
+                      <div key={index} className="flex gap-2 items-center w-full group">
+                        {key && !isBase && (
+                          <button
+                            onClick={() => {
+                              setSelectedFunction(key);
+                              if (functionDefs[key]?.isIndexed) {
+                                 setKConfirmed(false);
+                                 setShowPromptPrompt(true);
+                              }
+                            }}
+                            className={`p-1.5 h-9 w-9 rounded-lg border flex items-center justify-center cursor-pointer transition-all ${selectedFunction === key ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)] font-bold' : 'border-zinc-800/80 bg-zinc-900/30 text-zinc-500 hover:text-zinc-300'}`}
+                            title={lang === 'pt' ? `Visualizar esta função (${key})` : `Visualize this function (${key})`}
+                          >
+                            👁️
+                          </button>
+                        )}
+                        {isBase && (
+                          <div className="w-9 h-9 flex items-center justify-center text-xs text-zinc-600 font-mono">
+                            ↳
+                          </div>
+                        )}
+
+                        {React.createElement('math-field', {
+                          ref: (el: any) => {
+                            mathFieldRefs.current[index] = el;
+                          },
+                          value: line,
+                          onChange: (e: any) => {
+                            const newValue = e.target.value;
                             setFormulaLines(prev => {
                               const next = [...prev];
-                              next.splice(index + 1, 0, "");
+                              next[index] = newValue;
                               return next;
                             });
-                            setTimeout(() => {
+                          },
+                          onKeyDown: (e: any) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              setFormulaLines(prev => {
+                                const next = [...prev];
+                                next.splice(index + 1, 0, "");
+                                return next;
+                              });
+                              setTimeout(() => {
+                                const nextField = mathFieldRefs.current[index + 1];
+                                if (nextField) nextField.focus();
+                              }, 50);
+                            } else if (e.key === 'Backspace' && e.target.value === "") {
+                              e.preventDefault();
+                              if (formulaLines.length > 1) {
+                                setFormulaLines(prev => prev.filter((_, i) => i !== index));
+                                setTimeout(() => {
+                                  const prevField = mathFieldRefs.current[index - 1];
+                                  if (prevField) prevField.focus();
+                                }, 50);
+                              }
+                            } else if (e.key === 'ArrowUp') {
+                              const prevField = mathFieldRefs.current[index - 1];
+                              if (prevField) prevField.focus();
+                            } else if (e.key === 'ArrowDown') {
                               const nextField = mathFieldRefs.current[index + 1];
                               if (nextField) nextField.focus();
-                            }, 50);
-                          } else if (e.key === 'Backspace' && e.target.value === "") {
-                            e.preventDefault();
-                            if (formulaLines.length > 1) {
-                              setFormulaLines(prev => prev.filter((_, i) => i !== index));
-                              setTimeout(() => {
-                                const prevField = mathFieldRefs.current[index - 1];
-                                if (prevField) prevField.focus();
-                              }, 50);
                             }
-                          } else if (e.key === 'ArrowUp') {
-                            const prevField = mathFieldRefs.current[index - 1];
-                            if (prevField) prevField.focus();
-                          } else if (e.key === 'ArrowDown') {
-                            const nextField = mathFieldRefs.current[index + 1];
-                            if (nextField) nextField.focus();
+                          },
+                          style: {
+                            flex: '1',
+                            padding: '8px',
+                            backgroundColor: 'rgba(24, 24, 27, 0.6)',
+                            color: '#6ee7b7', // light emerald
+                            borderRadius: '0.375rem',
+                            border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
+                              ? '1px solid #ef4444' 
+                              : '1px solid rgba(63, 63, 70, 0.5)',
+                            boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
+                              ? '0 0 8px rgba(239, 68, 68, 0.2)'
+                              : 'none',
+                            outline: 'none',
+                            fontSize: '13px'
                           }
-                        },
-                        style: {
-                          flex: '1',
-                          padding: '8px',
-                          backgroundColor: 'rgba(24, 24, 27, 0.6)',
-                          color: '#6ee7b7', // light emerald
-                          borderRadius: '0.375rem',
-                          border: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`)) 
-                            ? '1px solid #ef4444' 
-                            : '1px solid rgba(63, 63, 70, 0.5)',
-                          boxShadow: editorErrors.some(err => err.includes(`Linha ${index + 1}:`) || err.includes(`Line ${index + 1}:`))
-                            ? '0 0 8px rgba(239, 68, 68, 0.2)'
-                            : 'none',
-                          outline: 'none',
-                          fontSize: '13px'
-                        }
-                      })}
-                      
-                      {formulaLines.length > 1 && (
-                        <button 
-                          onClick={() => {
-                            setFormulaLines(prev => prev.filter((_, i) => i !== index));
-                          }}
-                          className="text-red-500/60 hover:text-red-400 p-1.5 cursor-pointer text-[10px] font-mono transition-colors opacity-0 group-hover:opacity-100"
-                          title={lang === 'pt' ? 'Excluir linha' : 'Delete line'}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                        })}
+                        
+                        {formulaLines.length > 1 && (
+                          <button 
+                            onClick={() => {
+                              setFormulaLines(prev => prev.filter((_, i) => i !== index));
+                            }}
+                            className="text-red-500/60 hover:text-red-400 p-1.5 cursor-pointer text-[10px] font-mono transition-colors opacity-0 group-hover:opacity-100"
+                            title={lang === 'pt' ? 'Excluir linha' : 'Delete line'}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <button
@@ -813,7 +865,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
               {/* k Selection Slider */}
               <div className="flex flex-col gap-1.5 mt-2">
                  <input 
-                   type="range" min="0" max="12" 
+                   type="range" min="0" max={maxRecursionLimit} 
                    value={indexValues[selectedFunction] ?? 3} 
                    onChange={e => {
                      const val = parseInt(e.target.value, 10);
@@ -823,8 +875,8 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                  />
                  <div className="flex justify-between text-xs text-zinc-500 font-mono">
                     <span>k = 0</span>
-                    <span>k = 6</span>
-                    <span>k = 12</span>
+                    <span>k = {Math.floor(maxRecursionLimit / 2)}</span>
+                    <span>k = {maxRecursionLimit}</span>
                  </div>
               </div>
 
