@@ -99,7 +99,7 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
 
   const [selectedFunction, setSelectedFunction] = useState<string>("f_k");
   const [indexValues, setIndexValues] = useState<Record<string, number>>({
-    "f_k": 6
+    "f_k": 1
   });
 
   // Track if the user has unlocked/confirmed their selected k for the indexed function
@@ -684,71 +684,39 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
         })}
       </div>
 
-      {/* Floating Left Control Panel */}
-      <div className="absolute top-4 left-4 flex flex-col gap-3 pointer-events-none max-w-sm w-full z-40">
-         <div className="bg-zinc-950/40 backdrop-blur-md border border-zinc-800/60 p-4 rounded-xl shadow-2xl pointer-events-auto">
-            <h2 className="text-xl font-bold mb-1 text-zinc-100">{t.title}</h2>
-            <p className="text-xs text-zinc-400 mb-3">{t.desc}</p>
-            
-            {/* Slider for k (visible dynamically after confirmation/unlocking) */}
-            {functionDefs[selectedFunction]?.isIndexed && kConfirmed && (
-               <div className="flex flex-col gap-2 p-2.5 bg-emerald-500/5 border border-emerald-500/20 rounded-lg mb-3">
-                 <div className="flex justify-between items-center">
-                   <span className="text-xs font-bold text-emerald-400">f_k(z) Index (k)</span>
-                   <span className="text-xs font-mono font-bold bg-emerald-400 text-black px-1.5 py-0.5 rounded">
-                     k = {indexValues[selectedFunction] ?? 3}
-                   </span>
-                 </div>
-                 <input 
-                   type="range" min="0" max={maxRecursionLimit} 
-                   value={indexValues[selectedFunction] ?? 3} 
-                   onChange={e => {
-                     const val = parseInt(e.target.value, 10);
-                     setIndexValues(prev => ({ ...prev, [selectedFunction]: val }));
-                   }}
-                   className="w-full accent-emerald-400 bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
-                 />
+      {/* Unified Left Control Panel */}
+      <div className="absolute top-4 left-4 flex flex-col gap-3 pointer-events-none max-w-md w-full z-40">
+         <div className={`${theme === 'dark' ? 'bg-zinc-950/40 border-zinc-800/60 text-zinc-100' : 'bg-white/70 border-gray-200/60 text-gray-900'} backdrop-blur-md border p-5 rounded-2xl shadow-2xl pointer-events-auto transition-colors flex flex-col gap-4`}>
+            <div>
+               <h2 className="text-xl font-bold mb-1">{t.title}</h2>
+               <p className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-gray-500'}`}>{t.desc}</p>
+            </div>
+
+            {/* Dynamic k selection value (Freeform Number Input) */}
+            {functionDefs[selectedFunction]?.isIndexed && (
+               <div className={`flex items-center justify-between p-3 rounded-xl border ${theme === 'dark' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+                  <span className={`text-xs font-bold ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                     {lang === 'pt' ? 'Índice de Iteração (k):' : 'Iteration Index (k):'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                     <input
+                        type="number"
+                        min="0"
+                        value={indexValues[selectedFunction] ?? 1}
+                        onChange={e => {
+                           const val = parseInt(e.target.value, 10);
+                           if (!isNaN(val) && val >= 0) {
+                              setIndexValues(prev => ({ ...prev, [selectedFunction]: val }));
+                           }
+                        }}
+                        className={`w-16 h-8 text-center font-mono font-bold rounded-lg border text-sm outline-none focus:border-emerald-500 ${theme === 'dark' ? 'bg-zinc-900/60 border-zinc-800 text-emerald-400' : 'bg-gray-50 border-gray-300 text-emerald-600'}`}
+                     />
+                  </div>
                </div>
             )}
 
-            {/* MathField Display of the unrolled mathematical equation */}
-            <div className="mt-3">
-               {React.createElement('math-field', {
-                 ref: mathFieldRef,
-                 readOnly: true,
-                 style: { 
-                   width: '100%', 
-                   padding: '12px', 
-                   backgroundColor: 'rgba(24, 24, 27, 0.6)', 
-                   color: '#a7f3d0', 
-                   borderRadius: '0.5rem', 
-                   outline: 'none', 
-                   border: error ? '1px solid #ef4444' : '1px solid rgba(63, 63, 70, 0.5)', 
-                   boxShadow: error ? '0 0 10px rgba(239, 68, 68, 0.3)' : 'none',
-                   fontSize: '1.25rem' 
-                 }
-               })}
-            </div>
-            {error && (
-              <p className="text-red-400 text-xs mt-1 bg-red-950/20 border border-red-900/40 p-1.5 rounded font-mono">
-                {error}
-              </p>
-            )}
-         </div>
-
-         {/* Accordion Definitions Editor */}
-         <div className="bg-zinc-950/40 backdrop-blur-md border border-zinc-800/60 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
-            <button 
-              onClick={() => setShowDefinitionsEditor(!showDefinitionsEditor)}
-              className="w-full text-left p-3.5 flex justify-between items-center text-sm font-semibold text-zinc-300 hover:text-white transition-colors"
-            >
-              <span>{t.editDefs}</span>
-              <svg className={`w-4 h-4 transform transition-transform ${showDefinitionsEditor ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {showDefinitionsEditor && (
-              <div className="p-3.5 border-t border-zinc-800/40 flex flex-col gap-3 custom-scrollbar overflow-y-auto max-h-96">
+            {/* Large-size MathLive formula lines list */}
+            <div className="flex flex-col gap-3 max-h-96 overflow-y-auto custom-scrollbar">
                 <div className="flex flex-col gap-2">
                   {formulaLines.map((line, index) => {
                     const trimmedLine = line.trim();
@@ -864,8 +832,9 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                     );
                   })}
                 </div>
+              </div>
 
-                <button
+              <button
                   onClick={() => {
                     setFormulaLines(prev => [...prev, ""]);
                     setTimeout(() => {
@@ -873,13 +842,13 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                       if (nextField) nextField.focus();
                     }, 50);
                   }}
-                  className="border border-dashed border-zinc-800 hover:border-emerald-500/50 text-zinc-400 hover:text-emerald-400 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all mt-1"
+                  className={`border border-dashed py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all mt-1 ${theme === 'dark' ? 'border-zinc-800 hover:border-emerald-500/50 text-zinc-400 hover:text-emerald-400' : 'border-gray-300 hover:border-emerald-500 text-gray-500 hover:text-emerald-600'}`}
                 >
                   + {lang === 'pt' ? "Adicionar Linha (Enter)" : "Add Line (Enter)"}
                 </button>
 
                 {editorErrors.length > 0 && (
-                  <div className="flex flex-col gap-1.5 bg-red-950/20 border border-red-900/40 p-3 rounded-lg text-[11px] font-mono text-red-400 custom-scrollbar max-h-28 overflow-y-auto">
+                  <div className={`flex flex-col gap-1.5 border p-3 rounded-xl text-[11px] font-mono custom-scrollbar max-h-32 overflow-y-auto ${theme === 'dark' ? 'bg-red-950/20 border-red-900/40 text-red-400' : 'bg-red-50 border-red-200 text-red-600'}`}>
                     {editorErrors.map((err, i) => (
                       <div key={i} className="flex gap-1.5 items-start">
                         <span className="text-red-500">✕</span>
@@ -888,58 +857,8 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                     ))}
                   </div>
                 )}
-              </div>
-            )}
          </div>
       </div>
-
-      {/* Prominent Overlay Prompt Modal for choosing index value k BEFORE showing */}
-      {showPromptModal && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-lg flex items-center justify-center z-50 p-4">
-           <div className="bg-zinc-950 border border-zinc-800/80 max-w-md w-full p-6 rounded-2xl shadow-2xl flex flex-col gap-4 text-center">
-              <h3 className="text-xl font-bold text-zinc-100 flex items-center justify-center gap-2">
-                 <span className="text-emerald-400">f_k(z)</span> {lang === 'pt' ? 'Função Indexada' : 'Indexed Function'}
-              </h3>
-              <p className="text-sm text-zinc-400">
-                 {t.chooseK}
-              </p>
-              
-              {/* Dynamic Subscript display f_{k=37} */}
-              <div className="text-3xl font-extrabold text-emerald-400 font-mono tracking-wider bg-emerald-500/5 py-3 border border-emerald-500/10 rounded-xl">
-                 f_&#123;k={indexValues[selectedFunction] ?? 3}&#125;(z)
-              </div>
-
-              {/* k Selection Slider */}
-              <div className="flex flex-col gap-1.5 mt-2">
-                 <input 
-                   type="range" min="0" max={maxRecursionLimit} 
-                   value={indexValues[selectedFunction] ?? 3} 
-                   onChange={e => {
-                     const val = parseInt(e.target.value, 10);
-                     setIndexValues(prev => ({ ...prev, [selectedFunction]: val }));
-                   }}
-                   className="w-full accent-emerald-400 bg-zinc-800 h-2 rounded-lg cursor-pointer"
-                 />
-                 <div className="flex justify-between text-xs text-zinc-500 font-mono">
-                    <span>k = 0</span>
-                    <span>k = {Math.floor(maxRecursionLimit / 2)}</span>
-                    <span>k = {maxRecursionLimit}</span>
-                 </div>
-              </div>
-
-              {/* Confirm & Visualize Button */}
-              <button 
-                onClick={() => {
-                   setKConfirmed(true);
-                   setShowPromptPrompt(false);
-                }}
-                className="bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(52,211,153,0.3)] mt-2"
-              >
-                 {t.confirmVis} (f_&#123;k={indexValues[selectedFunction] ?? 3}&#125;)
-              </button>
-           </div>
-        </div>
-      )}
 
       {/* Floating Right Control Panel: Display Options Button & Box */}
       <div className="absolute top-4 right-4 flex flex-col gap-2 z-40 items-end">
