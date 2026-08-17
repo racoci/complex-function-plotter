@@ -1014,6 +1014,24 @@ export default function ComplexPlotter({ lang = 'en' }: { lang?: 'en' | 'pt' }) 
                              value: line,
                              onChange: (e: any) => {
                                const newValue = e.target.value;
+                               const mathfield = e.target;
+                               if (mathfield) {
+                                 const selection = mathfield.selection;
+                                 const colorizedValue = colorizeLaTeXFormula(newValue);
+                                 if (colorizedValue !== newValue) {
+                                   setFormulaLines(prev => {
+                                     const next = [...prev];
+                                     next[index] = colorizedValue;
+                                     return next;
+                                   });
+                                   setTimeout(() => {
+                                     if (mathfield) {
+                                       mathfield.selection = selection;
+                                     }
+                                   }, 0);
+                                   return;
+                                 }
+                               }
                                setFormulaLines(prev => {
                                  const next = [...prev];
                                  next[index] = newValue;
